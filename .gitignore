@@ -1,0 +1,20 @@
+# Build e artefatos do PyInstaller
+build/
+dist/
+*.pyz
+__pycache__/
+*.py[cod]
+
+# Ambientes virtuais
+.venv/
+venv/
+
+# Sistema
+Thumbs.db
+desktop.ini
+.DS_Store
+
+# Dados locais do app, se alguém rodar de dentro da pasta
+MagoDaPerformance_log.txt
+mago_backup.json
+mago_snapshots/
