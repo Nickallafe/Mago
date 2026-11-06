@@ -1,11 +1,15 @@
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Media;
 
 namespace MagoDaPerformance;
 
 public sealed class PanelPage : PageBase
 {
-    private readonly TextBlock _hw;
+    private readonly TextBlock _headline;
+    private readonly TextBlock _vOs, _vCpu, _vGpu, _vRam, _vDisk;
+    private readonly TextBlock _drvStatus;
+    private readonly ListBox _drvList;
     private readonly TextBlock _fpsValue;
     private readonly TextBlock _fpsStatus;
     private readonly TextBox _presentMon;
@@ -14,45 +18,67 @@ public sealed class PanelPage : PageBase
     private readonly CheckBox _overlay;
     private readonly TextBlock _stress;
 
-    public PanelPage(MainWindow host) : base(host, "Painel do sistema",
-        "Visao rapida do hardware, BIOS e atalhos de manutencao.")
-    {
-        // --- hardware
-        var hwCard = Card("HARDWARE E SISTEMA", 480);
-        var hwBody = BodyOf(hwCard);
-        _hw = Ui.Mono("A ler hardware...", 11, Ui.Txt);
-        hwBody.Children.Add(_hw);
-        hwBody.Children.Add(Ui.Wrap(
-            Ui.Btn("Atualizar hardware", () => Host.RunTask(() =>
-            {
-                var hw = SystemInfo.Detect();
-                Host.Dispatcher.Invoke(() =>
-                {
-                    Host.GetType();
-                    _hw.Text = hw.Text;
-                    Host.Engine.GpuName = hw.Gpu;
-                    Host.Engine.DiskTypes = hw.DiskTypes;
-                });
-                return null;
-            }, "A identificar hardware...")),
-            Ui.Btn("Abrir log", () => Proc.OpenUri(Paths.LogFile))));
+    private bool _scanning;
 
-        // --- FPS
-        var fpsCard = Card("FPS (PRESENTMON)", 480);
+    public PanelPage(MainWindow host) : base(host, "Bem-vindo",
+        "Resumo do seu PC, drivers e atalhos do dia a dia.")
+    {
+        // ---------- o meu computador ----------
+        var pc = Card("O MEU COMPUTADOR", 970);
+        var pcBody = BodyOf(pc);
+        _headline = Ui.Lbl("A ler o hardware...", 16, Ui.Txt, bold: true);
+        _headline.Margin = new Thickness(0, 0, 0, 14);
+        pcBody.Children.Add(_headline);
+
+        var specs = new Grid();
+        specs.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        specs.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        for (var i = 0; i < 3; i++) specs.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        _vOs = Spec(specs, 0, 0, "SISTEMA OPERATIVO");
+        _vCpu = Spec(specs, 0, 1, "PROCESSADOR");
+        _vGpu = Spec(specs, 1, 0, "GRAFICA");
+        _vRam = Spec(specs, 1, 1, "MEMORIA");
+        _vDisk = Spec(specs, 2, 0, "ARMAZENAMENTO");
+        pcBody.Children.Add(specs);
+
+        pcBody.Children.Add(Ui.Wrap(
+            Ui.Btn("Atualizar informacoes", () => Host.RefreshHardware(), primary: true)));
+
+        // ---------- drivers ----------
+        var drv = Card("DRIVERS E ATUALIZACOES", 970);
+        var drvBody = BodyOf(drv);
+        drvBody.Children.Add(Ui.Lbl(
+            "O Mago le a versao e a data dos drivers principais e avisa quando algum esta antigo.",
+            11, Ui.Dim));
+        _drvStatus = Ui.Lbl("A verificar os drivers instalados...", 12, Ui.Txt, bold: true);
+        _drvStatus.Margin = new Thickness(0, 6, 0, 4);
+        drvBody.Children.Add(_drvStatus);
+        _drvList = Ui.List(168);
+        _drvList.HorizontalContentAlignment = HorizontalAlignment.Stretch;
+        drvBody.Children.Add(_drvList);
+        drvBody.Children.Add(Ui.Wrap(
+            Ui.Btn("Verificar no Windows Update", CheckUpdates, primary: true),
+            Ui.Btn("Instalar atualizacoes", InstallUpdates),
+            Ui.Btn("Abrir Windows Update", () => Proc.OpenUri("ms-settings:windowsupdate"))));
+
+        // ---------- fps ----------
+        var fpsCard = Card("FPS DO JOGO", 480);
         var fpsBody = BodyOf(fpsCard);
-        _fpsValue = Ui.Mono("FPS --   media --", 26, Ui.Green);
+        fpsBody.Children.Add(Ui.Lbl("Mede os quadros por segundo do jogo que estiver aberto.", 11, Ui.Dim));
+        _fpsValue = Ui.Mono("FPS --   media --", 24, Ui.Green);
         _fpsStatus = Ui.Lbl("Selecione o executavel do jogo e o PresentMon.", 11, Ui.Dim);
 
         _presentMon = Ui.Input("PresentMon-2.6.0-x64.exe", 430);
         _presentMon.Margin = new Thickness(0, 6, 8, 8);
         _presentMon.Text = FpsMonitor.AutoLocatePresentMon() ?? "";
-        _targets = Ui.List(150);
-        _fpsButton = Ui.Btn("INICIAR MEDICAO", ToggleFps);
+        _targets = Ui.List(120);
+        _fpsButton = Ui.Btn("INICIAR MEDICAO", ToggleFps, primary: true);
         _overlay = new CheckBox
         {
             Content = "Overlay sempre no topo",
             Foreground = Ui.Br(Ui.Txt),
-            Margin = new Thickness(8, 4, 0, 8),
+            Margin = new Thickness(8, 6, 12, 8),
+            VerticalAlignment = VerticalAlignment.Center,
         };
         _overlay.Checked += (_, _) => Host.ToggleOverlay(true);
         _overlay.Unchecked += (_, _) => Host.ToggleOverlay(false);
@@ -61,24 +87,29 @@ public sealed class PanelPage : PageBase
         fpsBody.Children.Add(_fpsStatus);
         fpsBody.Children.Add(_presentMon);
         fpsBody.Children.Add(Ui.Wrap(
-            Ui.Btn("Procurar PresentMon", BrowsePresentMon),
-            Ui.Btn("Baixar PresentMon", () => Proc.OpenUri("https://github.com/GameTechDev/PresentMon/releases/latest")),
-            Ui.Btn("Atualizar jogos", RefreshTargets)));
+            Ui.Btn("Localizar PresentMon", BrowsePresentMon),
+            Ui.Btn("Baixar", () => Proc.OpenUri("https://github.com/GameTechDev/PresentMon/releases/latest")),
+            Ui.Btn("Listar jogos abertos", RefreshTargets)));
         fpsBody.Children.Add(_targets);
         fpsBody.Children.Add(Ui.Wrap(_fpsButton, _overlay, Ui.Btn("Reiniciar contagem", ResetFps)));
 
-        // --- manutencao
+        // ---------- manutencao ----------
         var quickCard = Card("MANUTENCAO RAPIDA", 480);
         var quickBody = BodyOf(quickCard);
+        quickBody.Children.Add(Ui.Lbl("Tarefas simples que costumam resolver lentidao.", 11, Ui.Dim));
         _stress = Ui.Lbl("", 11, Ui.Dim);
         quickBody.Children.Add(Ui.Wrap(
-            Ui.Btn("Teste de stresse 15s", () => Host.RunTask(() => Host.Engine.StressTest(15), "Teste de stresse...")),
+            Ui.Btn("Teste de carga 15s", () => Host.RunTask(() => Host.Engine.StressTest(15), "Teste de carga...")),
             Ui.Btn("Limpar DNS", () => Host.Engine.FlushDns()),
-            Ui.Btn("Reiniciar Explorer", () => { if (Host.Confirm("Reiniciar o Explorador de Ficheiros?", "Explorer")) Host.Engine.RestartExplorer(); })));
+            Ui.Btn("Reiniciar Explorer", () =>
+            {
+                if (Host.Confirm("Reiniciar o Explorador de Ficheiros?", "Explorer")) Host.Engine.RestartExplorer();
+            })));
         quickBody.Children.Add(_stress);
 
-        Add(Row(hwCard, fpsCard));
-        Add(Row(quickCard));
+        Add(pc);
+        Add(drv);
+        Add(Row(fpsCard, quickCard));
 
         Host.Fps.Updated += (current, average, samples) => Host.Dispatcher.Invoke(() =>
         {
@@ -95,7 +126,156 @@ public sealed class PanelPage : PageBase
 
     private static StackPanel BodyOf(Border card) => (StackPanel)((StackPanel)card.Child).Children[1];
 
-    public void SetHardware(HardwareInfo hw) => _hw.Text = hw.Text;
+    private static TextBlock Spec(Grid grid, int row, int column, string label)
+    {
+        var stack = new StackPanel { Margin = new Thickness(0, 0, 20, 14) };
+        stack.Children.Add(Ui.Lbl(label, 9, Ui.Dim, bold: true, wrap: false));
+        var value = Ui.Lbl("-", 13, Ui.Txt);
+        stack.Children.Add(value);
+        Grid.SetRow(stack, row);
+        Grid.SetColumn(stack, column);
+        grid.Children.Add(stack);
+        return value;
+    }
+
+    public void SetHardware(HardwareInfo hw)
+    {
+        var os = FriendlyOs();
+        var ram = hw.RamGb > 0 ? $"{hw.RamGb:0.#} GB" : "?";
+        _headline.Text = $"{os}  ·  {Environment.ProcessorCount} nucleos  ·  {ram} de RAM";
+        _vOs.Text = os;
+        _vCpu.Text = string.IsNullOrWhiteSpace(hw.Cpu) ? "-" : hw.Cpu;
+        _vGpu.Text = string.IsNullOrWhiteSpace(hw.Gpu) ? "-" : hw.Gpu;
+        _vRam.Text = ram;
+        _vDisk.Text = hw.Disks.Count > 0 ? string.Join("  •  ", hw.Disks) : "Nao identificado";
+    }
+
+    /// <summary>"Microsoft Windows 10.0.26100" nao diz nada ao utilizador.</summary>
+    private static string FriendlyOs()
+    {
+        var v = Environment.OSVersion.Version;
+        var name = v.Build >= 22000 ? "Windows 11" : v.Build >= 10240 ? "Windows 10" : "Windows";
+        return $"{name} (build {v.Build})";
+    }
+
+    /// <summary>Le os drivers em segundo plano (nao bloqueia a janela).</summary>
+    public void BeginScan()
+    {
+        if (_scanning) return;
+        _scanning = true;
+        _drvStatus.Foreground = Ui.Br(Ui.Txt);
+        _drvStatus.Text = "A verificar os drivers instalados...";
+        _drvList.Items.Clear();
+        System.Threading.Tasks.Task.Run(() =>
+        {
+            List<DriverRow> rows;
+            try { rows = Drivers.Scan(); }
+            catch (Exception ex) { Log.Write("Drivers: " + ex.Message, "ERRO"); rows = new(); }
+            Host.Dispatcher.Invoke(() =>
+            {
+                FillDrivers(rows);
+                _scanning = false;
+            });
+        });
+    }
+
+    private void FillDrivers(List<DriverRow> rows)
+    {
+        _drvList.Items.Clear();
+        if (rows.Count == 0)
+        {
+            _drvStatus.Text = "Nao foi possivel ler a lista de drivers.";
+            _drvStatus.Foreground = Ui.Br(Ui.Gold);
+            _drvList.Items.Add(Ui.Lbl("Sem dados de drivers neste sistema.", 11, Ui.Dim));
+            return;
+        }
+
+        var old = rows.Count(r => r.Old);
+        if (old == 0)
+        {
+            _drvStatus.Text = $"{rows.Count} drivers verificados - todos recentes.";
+            _drvStatus.Foreground = Ui.Br(Ui.Green);
+        }
+        else
+        {
+            _drvStatus.Text = $"{rows.Count} drivers verificados - {old} com mais de 2 anos. Veja o Windows Update.";
+            _drvStatus.Foreground = Ui.Br(Ui.Gold);
+        }
+
+        foreach (var row in rows.Take(12)) _drvList.Items.Add(DriverItem(row));
+        // Altura justa: com poucos drivers a caixa nao fica com espaco vazio nem barra.
+        _drvList.Height = Math.Min(168, 26 * Math.Min(rows.Count, 12) + 10);
+    }
+
+    private static UIElement DriverItem(DriverRow row)
+    {
+        var grid = new Grid { Margin = new Thickness(0, 1, 0, 1) };
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(150) });
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(120) });
+
+        var name = Ui.Lbl(row.Device, 12, Ui.Txt, wrap: false);
+        name.TextTrimming = TextTrimming.CharacterEllipsis;
+        name.ToolTip = $"{row.Device}\nClasse: {row.Class}\nFabricante: {row.Provider}";
+        var meta = Ui.Lbl($"v{row.Version} · {row.Date}", 11, Ui.Dim, wrap: false);
+        var badge = Ui.Lbl(row.Old ? "DESATUALIZADO" : "recente", 10,
+            row.Old ? Ui.Gold : Ui.Green, bold: true, wrap: false);
+
+        Grid.SetColumn(name, 0);
+        Grid.SetColumn(meta, 1);
+        Grid.SetColumn(badge, 2);
+        grid.Children.Add(name);
+        grid.Children.Add(meta);
+        grid.Children.Add(badge);
+        return grid;
+    }
+
+    private void CheckUpdates()
+    {
+        Host.RunTask(() =>
+        {
+            var (ok, message, titles) = Drivers.CheckUpdates();
+            Host.Dispatcher.Invoke(() =>
+            {
+                if (!ok)
+                {
+                    _drvStatus.Text = "Nao foi possivel consultar o Windows Update.";
+                    _drvStatus.Foreground = Ui.Br(Ui.Gold);
+                }
+                else if (titles.Count == 0)
+                {
+                    _drvStatus.Text = "Windows Update: nenhuma atualizacao de driver pendente.";
+                    _drvStatus.Foreground = Ui.Br(Ui.Green);
+                }
+                else
+                {
+                    _drvStatus.Text = $"Windows Update: {titles.Count} atualizacao(oes) de driver disponivel(is).";
+                    _drvStatus.Foreground = Ui.Br(Ui.Gold);
+                }
+            });
+            return message;
+        }, "A consultar o Windows Update...");
+    }
+
+    private void InstallUpdates()
+    {
+        if (!Host.Confirm(
+                "Isto descarrega e instala as atualizacoes de driver do Windows Update.\n" +
+                "Pode demorar e pode ser necessario reiniciar o PC. Continuar?",
+                "Atualizar drivers")) return;
+
+        Host.RunTask(() =>
+        {
+            var (ok, message) = Drivers.InstallUpdates();
+            Host.Dispatcher.Invoke(() =>
+            {
+                _drvStatus.Text = ok ? "Atualizacoes de driver concluidas." : "Falha ao instalar atualizacoes de driver.";
+                _drvStatus.Foreground = Ui.Br(ok ? Ui.Green : Ui.Gold);
+            });
+            BeginScan();
+            return message;
+        }, "A instalar atualizacoes de driver...");
+    }
 
     private void BrowsePresentMon()
     {
@@ -124,7 +304,7 @@ public sealed class PanelPage : PageBase
                 if (_targets.SelectedIndex < 0 && list.Count > 0) _targets.SelectedIndex = 0;
                 _fpsStatus.Text = list.Count > 0
                     ? $"{list.Count} executaveis encontrados."
-                    : "Nenhum executavel listado. Digite o nome .exe do jogo.";
+                    : "Nenhum executavel listado. Abra o jogo e tente de novo.";
             });
         });
     }
@@ -138,16 +318,15 @@ public sealed class PanelPage : PageBase
             _fpsStatus.Text = "Medicao parada.";
             return;
         }
-        var target = _targets.SelectedItem as string;
-        if (string.IsNullOrWhiteSpace(target))
+        if (_targets.SelectedItem is not string target || string.IsNullOrWhiteSpace(target))
         {
-            _fpsStatus.Text = "Selecione um processo na lista (ou atualize os jogos abertos).";
+            _fpsStatus.Text = "Escolha um jogo na lista (use \"Listar jogos abertos\").";
             return;
         }
         if (Host.Fps.Start(_presentMon.Text.Trim().Trim('"'), target, out var error))
         {
             _fpsButton.Content = "PARAR MEDICAO";
-            _fpsStatus.Text = $"A medir {target}. Se o jogo nao estiver aberto, aguarda.";
+            _fpsStatus.Text = $"A medir {target}. Se o jogo nao estiver aberto, aguarde.";
             if (_overlay.IsChecked == true) Host.ToggleOverlay(true);
         }
         else

@@ -29,7 +29,7 @@ ficar pronta.
 
 | Página | O que faz |
 |--------|-----------|
-| **Painel** | Hardware, BIOS resumida, medidores de CPU/RAM/disco, FPS via PresentMon e manutenção rápida. |
+| **Painel** | Resumo do PC (SO, CPU, GPU, RAM, discos) lido ao abrir, cartão de drivers com alerta de drivers antigos e atualização pelo Windows Update, FPS via PresentMon e manutenção rápida. |
 | **Otimizar** | Perfis Equilibrado/Competitivo e módulos: GPU/HAGS, Windows Gaming, registo multimédia, energia, serviços, temp+DNS, rede, input lag, SSD. |
 | **Rede** | Ping (router e internet), download/upload e benchmark de resolvedores DNS com troca por `netsh`. |
 | **Aplicativos** | Lista Win32 e Store, pesquisa, desinstalação oficial e remoção forçada. |
@@ -52,7 +52,7 @@ ajustes de registo, serviços, BCD, energia e arranque.
 | `mago_snapshots/` | Cópias datadas do backup. |
 | `mago_settings.json` | Preferências (PresentMon, overlay). |
 
-Tudo em `%LOCALAPPDATA%\MagoDaPerformance\`.
+Tudo em `%LOCALAPPDATA%\MagoDaPerformance\`. O botão **Abrir log**, na barra lateral, abre o ficheiro de log.
 
 ## Compilar a partir do código
 

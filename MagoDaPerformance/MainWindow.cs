@@ -11,7 +11,6 @@ public partial class MainWindow : Window
     private readonly Dictionary<string, Button> _nav = new();
     private readonly Dictionary<string, FrameworkElement> _pages = new();
     private readonly TextBlock _lblCpu, _lblRam, _lblDisk, _lblStatus;
-    private readonly TextBox _console = new();
     private readonly ProgressBar _bar = new();
     private readonly DispatcherTimer _timer;
     private PanelPage? _panel;
@@ -37,8 +36,6 @@ public partial class MainWindow : Window
         Store = new BackupStore(Paths.BackupFile);
         Engine = new TweakEngine(Store);
 
-        Log.Line += OnLogLine;
-
         _lblCpu = Ui.Mono("CPU --%", 12, Ui.Green);
         _lblRam = Ui.Mono("RAM --%", 12, Ui.Cyan);
         _lblDisk = Ui.Mono("C: --%", 12, Ui.Gold);
@@ -57,10 +54,8 @@ public partial class MainWindow : Window
         var root = new Grid { Background = Ui.Br(Ui.Bg) };
         root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(64) });
         root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
-        root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(170) });
         root.Children.Add(BuildHeader());
         root.Children.Add(BuildBody());
-        root.Children.Add(BuildConsole());
 
         Content = root;
         root.Children.Add(_bar);
@@ -90,6 +85,7 @@ public partial class MainWindow : Window
                         Engine.GpuName = hw.Gpu;
                         Engine.DiskTypes = hw.DiskTypes;
                         _panel?.SetHardware(hw);
+                        _panel?.BeginScan();
                     });
                 }
                 catch (Exception ex) { Log.Write(ex.Message, "ERRO"); }
@@ -171,14 +167,34 @@ public partial class MainWindow : Window
             sideStack.Children.Add(b);
             _nav[key] = b;
         }
+        sideStack.Children.Add(new Border
+        {
+            Background = Ui.Br(Ui.Line),
+            Height = 1,
+            Margin = new Thickness(20, 18, 20, 14),
+        });
         sideStack.Children.Add(new TextBlock
         {
-            Text = "ADMIN ATIVO",
-            Foreground = Ui.Br(Ui.Green),
+            Text = Proc.IsAdmin() ? "ADMIN ATIVO" : "SEM PRIVILEGIOS",
+            Foreground = Ui.Br(Proc.IsAdmin() ? Ui.Green : Ui.Gold),
             FontSize = 9,
             FontWeight = FontWeights.Bold,
-            Margin = new Thickness(24, 24, 0, 0),
+            Margin = new Thickness(24, 0, 0, 6),
         });
+        var logButton = new Button
+        {
+            Content = "Abrir log",
+            Foreground = Ui.Br(Ui.Dim),
+            Background = Brushes.Transparent,
+            BorderThickness = new Thickness(0),
+            HorizontalContentAlignment = HorizontalAlignment.Left,
+            Padding = new Thickness(24, 8, 24, 8),
+            FontSize = 11,
+            Cursor = System.Windows.Input.Cursors.Hand,
+            Template = FlatTemplate(),
+        };
+        logButton.Click += (_, _) => Proc.OpenUri(Paths.LogFile);
+        sideStack.Children.Add(logButton);
         side.Child = sideStack;
 
         _host.Margin = new Thickness(16, 14, 16, 8);
@@ -200,30 +216,6 @@ public partial class MainWindow : Window
         presenter.SetValue(FrameworkElement.VerticalAlignmentProperty, VerticalAlignment.Center);
         border.AppendChild(presenter);
         return new ControlTemplate(typeof(Button)) { VisualTree = border };
-    }
-
-    private UIElement BuildConsole()
-    {
-        var wrap = new Grid { Margin = new Thickness(16, 0, 16, 12) };
-        Grid.SetRow(wrap, 2);
-        wrap.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-        wrap.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
-
-        var label = Ui.Lbl("CONSOLA", 9, Ui.Dim, bold: true);
-        _console.IsReadOnly = true;
-        _console.Background = Ui.Br(Color.FromRgb(0x05, 0x07, 0x0B));
-        _console.Foreground = Ui.Br(Ui.Green);
-        _console.BorderBrush = Ui.Br(Ui.Line);
-        _console.FontFamily = Ui.MonoFont;
-        _console.FontSize = 11;
-        _console.VerticalScrollBarVisibility = ScrollBarVisibility.Auto;
-        _console.TextWrapping = TextWrapping.NoWrap;
-
-        Grid.SetRow(label, 0);
-        Grid.SetRow(_console, 1);
-        wrap.Children.Add(label);
-        wrap.Children.Add(_console);
-        return wrap;
     }
 
     private void BuildPages()
@@ -269,13 +261,6 @@ public partial class MainWindow : Window
     public void Info(string message, string title = "Mago") =>
         MessageBox.Show(this, message, title, MessageBoxButton.OK, MessageBoxImage.Information);
 
-    private void OnLogLine(string text)
-    {
-        if (!Dispatcher.CheckAccess()) { Dispatcher.BeginInvoke(() => OnLogLine(text)); return; }
-        _console.AppendText(text + Environment.NewLine);
-        _console.ScrollToEnd();
-    }
-
     private void TickMeters()
     {
         try
@@ -305,6 +290,24 @@ public partial class MainWindow : Window
                 Dispatcher.Invoke(() => { Busy(false, "Pronto."); });
             }
         });
+    }
+
+    /// <summary>Relê o hardware e volta a verificar os drivers.</summary>
+    public void RefreshHardware()
+    {
+        RunTask(() =>
+        {
+            var hw = SystemInfo.Detect();
+            Dispatcher.Invoke(() =>
+            {
+                Hardware = hw;
+                Engine.GpuName = hw.Gpu;
+                Engine.DiskTypes = hw.DiskTypes;
+                _panel?.SetHardware(hw);
+            });
+            return null;
+        }, "A identificar hardware...");
+        _panel?.BeginScan();
     }
 
     public void ToggleOverlay(bool show, Action<string>? onToggle = null)

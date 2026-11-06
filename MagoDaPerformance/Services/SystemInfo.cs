@@ -8,6 +8,10 @@ public sealed class HardwareInfo
     public string Text { get; init; } = "";
     public string Gpu { get; init; } = "";
     public List<string> DiskTypes { get; init; } = new();
+    public string Os { get; init; } = "";
+    public string Cpu { get; init; } = "";
+    public double RamGb { get; init; }
+    public List<string> Disks { get; init; } = new();
 }
 
 public static class SystemInfo
@@ -113,7 +117,16 @@ public static class SystemInfo
             $"Discos: {(disks.Count > 0 ? string.Join(", ", disks) : "Desconhecido")}";
 
         Log.Write("Hardware detetado.");
-        return new HardwareInfo { Text = text2, Gpu = gpu, DiskTypes = diskTypes };
+        return new HardwareInfo
+        {
+            Text = text2,
+            Gpu = gpu,
+            DiskTypes = diskTypes,
+            Os = os,
+            Cpu = cpu,
+            RamGb = ramGb,
+            Disks = disks,
+        };
     }
 
     /// <summary>BIOS, board, Secure Boot e TPM.</summary>
