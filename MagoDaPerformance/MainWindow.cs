@@ -9,7 +9,7 @@ public partial class MainWindow : Window
 {
     private readonly ContentControl _host = new();
     private readonly Dictionary<string, Button> _nav = new();
-    private readonly Dictionary<string, FrameworkElement> _pages = new();
+    private readonly Dictionary<string, PageBase> _pages = new();
     private readonly TextBlock _lblCpu, _lblRam, _lblDisk, _lblStatus;
     private readonly ProgressBar _bar = new();
     private readonly DispatcherTimer _timer;
@@ -64,7 +64,7 @@ public partial class MainWindow : Window
         VerticalAlignment = VerticalAlignment.Top;
 
         BuildPages();
-        ShowPage("painel");
+        ShowPage(Program.StartPage ?? "painel");
 
         _timer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1.2) };
         _timer.Tick += (_, _) => TickMeters();
@@ -221,19 +221,21 @@ public partial class MainWindow : Window
     private void BuildPages()
     {
         _panel = new PanelPage(this);
-        _pages["painel"] = _panel.Root;
-        _pages["otimizar"] = new OptimizePage(this).Root;
-        _pages["rede"] = new NetworkPage(this).Root;
-        _pages["apps"] = new AppsPage(this).Root;
-        _pages["backup"] = new BackupPage(this).Root;
-        _pages["bios"] = new BiosPage(this).Root;
-        _pages["ferramentas"] = new ToolsPage(this).Root;
+        _pages["painel"] = _panel;
+        _pages["otimizar"] = new OptimizePage(this);
+        _pages["rede"] = new NetworkPage(this);
+        _pages["apps"] = new AppsPage(this);
+        _pages["backup"] = new BackupPage(this);
+        _pages["bios"] = new BiosPage(this);
+        _pages["ferramentas"] = new ToolsPage(this);
     }
 
     public void ShowPage(string key)
     {
         if (!_pages.TryGetValue(key, out var page)) return;
-        _host.Content = page;
+        _host.Content = page.Root;
+        // Cada pagina pode carregar o que precisa ao ficar visivel (ex.: pre-analise de rede).
+        if (_host.Content != null) page.OnShown();
         foreach (var (name, btn) in _nav)
         {
             var active = name == key;

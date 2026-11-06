@@ -4,9 +4,18 @@ namespace MagoDaPerformance;
 
 public static class Program
 {
+    /// <summary>Pagina a abrir; definida por --page=nome (usado em testes e atalhos).</summary>
+    internal static string? StartPage { get; private set; }
+
     [STAThread]
     public static int Main(string[] args)
     {
+        foreach (var arg in args)
+        {
+            foreach (var prefix in new[] { "--page=", "/page=" })
+                if (arg.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+                    StartPage = arg[prefix.Length..].Trim().ToLowerInvariant();
+        }
         if (args.Any(a => a.Equals("--selfcheck", StringComparison.OrdinalIgnoreCase)))
             return SelfCheck();
 

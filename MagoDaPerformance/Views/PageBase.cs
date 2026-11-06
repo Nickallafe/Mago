@@ -20,6 +20,9 @@ public abstract class PageBase
         Root = Ui.Scroll(stack);
     }
 
+    /// <summary>Chamado sempre que a pagina passa a estar visivel.</summary>
+    public virtual void OnShown() { }
+
     protected void Add(UIElement element) => Body.Children.Add(element);
 
     /// <summary>Cartao de largura fixa (WrapPanel) com o corpo para preencher.</summary>

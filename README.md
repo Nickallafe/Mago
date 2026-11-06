@@ -31,7 +31,7 @@ ficar pronta.
 |--------|-----------|
 | **Painel** | Resumo do PC (SO, CPU, GPU, RAM, discos) lido ao abrir, cartão de drivers com alerta de drivers antigos e atualização pelo Windows Update, FPS via PresentMon e manutenção rápida. |
 | **Otimizar** | Perfis Equilibrado/Competitivo e módulos: GPU/HAGS, Windows Gaming, registo multimédia, energia, serviços, temp+DNS, rede, input lag, SSD. |
-| **Rede** | Ping (router e internet), download/upload e benchmark de resolvedores DNS com troca por `netsh`. |
+| **Rede** | Ao abrir faz pré-análise automática (adaptador, gateway, DNS atuais, link e ping). Botões para ping, download/upload e benchmark de resolvedores DNS com troca por `netsh`. |
 | **Aplicativos** | Lista Win32 e Store, pesquisa, desinstalação oficial e remoção forçada. |
 | **Backup** | Captura, exportação/importação, restauro e pontos de restauro do Windows. |
 | **BIOS** | Firmware, board, Secure Boot, TPM e atalho ao suporte do fabricante. |

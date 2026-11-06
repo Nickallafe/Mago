@@ -16,35 +16,43 @@ public sealed class NetworkPage : PageBase
     private NetRoute _route = new("", null, new List<string>(), null);
     private List<DnsResult> _results = new();
 
+    private bool _autoRunning;
+    private DateTime _lastAuto = DateTime.MinValue;
+
     public NetworkPage(MainWindow host) : base(host, "Rede",
-        "Mede ping, download, upload e a latencia dos resolvedores DNS.")
+        "Ping, velocidade e DNS. A analise basica comeca sozinha ao abrir esta pagina.")
     {
-        var infoCard = Card("ADAPTADOR", 400);
+        var infoCard = Card("ADAPTADOR", 380);
         var infoBody = BodyOf(infoCard);
         _info = Ui.Mono("A ler a rede...", 11, Ui.Txt);
         infoBody.Children.Add(_info);
         infoBody.Children.Add(Ui.Wrap(
-            Ui.Btn("Atualizar", RefreshRoute),
+            Ui.Btn("Analisar de novo", () => AutoAnalyse(force: true), primary: true),
             Ui.Btn("Limpar DNS", () => Host.Engine.FlushDns())));
 
-        var testCard = Card("TESTES", 620);
+        var testCard = Card("TESTES", 590);
         var testBody = BodyOf(testCard);
-        _ping = Ui.Lbl("Ping: ainda nao medido.", 12, Ui.Txt);
+        _ping = Ui.Lbl("Ping: a medir...", 12, Ui.Txt);
         _speed = Ui.Lbl("Velocidade: ainda nao medida.", 12, Ui.Txt);
         _diag = Ui.Lbl("", 12, Ui.Gold);
         testBody.Children.Add(Ui.Wrap(
             Ui.Btn("Ping", RunPing),
             Ui.Btn("Velocidade", RunSpeed),
-            Ui.Btn("TESTE COMPLETO", RunFull, primary: true)));
+            Ui.Btn("TESTE COMPLETO", RunFull)));
         testBody.Children.Add(_ping);
         testBody.Children.Add(_speed);
         testBody.Children.Add(_diag);
 
-        var dnsCard = Card("DNS - MELHOR RESOLVEDOR", 620);
+        var dnsCard = Card("DNS - MELHOR RESOLVEDOR", 970);
         var dnsBody = BodyOf(dnsCard);
-        _dnsRanking = Ui.Mono("Corre o benchmark para comparar Cloudflare, Google, Quad9, OpenDNS, AdGuard e o DNS atual.", 11, Ui.Txt);
+        dnsBody.Children.Add(Ui.Lbl(
+            "Compara Cloudflare, Google, Quad9, OpenDNS, AdGuard e o DNS atual, e aplica o mais rapido.",
+            11, Ui.Dim));
+        _dnsRanking = Ui.Mono("", 11, Ui.Txt);
         _dnsStatus = Ui.Lbl("", 11, Ui.Dim);
         _dnsChoices = Ui.List(120);
+        // So aparecem depois do benchmark: antes disso nao ha o que escolher.
+        _dnsChoices.Visibility = Visibility.Collapsed;
         _applyDns = Ui.Btn("APLICAR DNS", ApplyDns, primary: true);
         dnsBody.Children.Add(Ui.Wrap(
             Ui.Btn("BENCHMARK DNS", RunDnsBenchmark),
@@ -60,36 +68,89 @@ public sealed class NetworkPage : PageBase
 
     private static StackPanel BodyOf(Border card) => (StackPanel)((StackPanel)card.Child).Children[1];
 
-    private void RefreshRoute()
+    /// <summary>Ao entrar na pagina, faz logo a leitura basica da rede.</summary>
+    public override void OnShown()
     {
+        // Evita repetir tudo quando o utilizador troca de pagina e volta em seguida.
+        if ((DateTime.Now - _lastAuto).TotalSeconds < 10) return;
+        AutoAnalyse(force: false);
+    }
+
+    private void AutoAnalyse(bool force)
+    {
+        if (_autoRunning) return;
+        if (!force && (DateTime.Now - _lastAuto).TotalSeconds < 10) return;
+        _autoRunning = true;
+        _lastAuto = DateTime.Now;
+        _info.Foreground = Ui.Br(Ui.Txt);
+        _info.Text = "A ler a rede...";
+        _ping.Text = "Ping: a medir...";
+        _diag.Text = "";
+
         System.Threading.Tasks.Task.Run(() =>
         {
-            var route = Net.Route();
-            Host.Dispatcher.Invoke(() =>
+            try
             {
-                _route = route;
-                _info.Text =
-                    $"Adaptador: {(string.IsNullOrEmpty(route.Adapter) ? "nao detetado" : route.Adapter)}\n" +
-                    $"Gateway: {route.Gateway ?? "—"}\n" +
-                    $"DNS atuais: {(route.Dns.Count > 0 ? string.Join(", ", route.Dns) : "automatico")}\n" +
-                    $"Link: {route.Link ?? "—"}";
-            });
+                var route = Net.Route();
+                PingStats? gateway = null, internet = null;
+                if (!string.IsNullOrEmpty(route.Adapter))
+                {
+                    if (!string.IsNullOrEmpty(route.Gateway)) gateway = Net.PingHost(route.Gateway!, 3, 1200);
+                    internet = Net.PingHost("1.1.1.1", 3, 1200);
+                }
+                Host.Dispatcher.Invoke(() => ApplyRoute(route, gateway, internet));
+            }
+            catch (Exception ex)
+            {
+                Log.Write("Pre-analise de rede: " + ex.Message, "ERRO");
+                Host.Dispatcher.Invoke(() => _ping.Text = "Ping: falhou a pre-analise.");
+            }
+            finally
+            {
+                Host.Dispatcher.Invoke(() => _autoRunning = false);
+            }
         });
+    }
+
+    /// <summary>Atualiza os cartoes a partir de uma leitura de rede.</summary>
+    private void ApplyRoute(NetRoute route, PingStats? gateway, PingStats? internet)
+    {
+        _route = route;
+        if (string.IsNullOrEmpty(route.Adapter))
+        {
+            _info.Foreground = Ui.Br(Ui.Gold);
+            _info.Text = "Sem ligacao de rede ativa.\nVerifique o cabo ou o Wi-Fi.";
+            _ping.Text = "Ping: sem ligacao.";
+            _diag.Text = "";
+            return;
+        }
+
+        _info.Foreground = Ui.Br(Ui.Txt);
+        _info.Text =
+            $"Adaptador: {route.Adapter}\n" +
+            $"Gateway: {route.Gateway ?? "—"}\n" +
+            $"DNS atuais: {(route.Dns.Count > 0 ? string.Join(", ", route.Dns) : "automatico")}\n" +
+            $"Link: {route.Link ?? "—"}";
+
+        if (internet != null)
+        {
+            _ping.Text = $"Ping internet (1.1.1.1): {internet}\n" +
+                         $"Ping router: {(gateway?.ToString() ?? "sem gateway")}";
+            _diag.Text = Net.Diagnose(internet, gateway, null, null);
+        }
+
+        if (_results.Count == 0 && route.Dns.Count > 0)
+            _dnsStatus.Text = $"DNS atual: {string.Join(", ", route.Dns)}. Clique em BENCHMARK DNS para comparar.";
     }
 
     private void RunPing()
     {
         Host.RunTask(() =>
         {
-            var gateway = _route.Gateway;
-            var local = gateway != null ? Net.PingHost(gateway) : null;
+            var route = Net.Route();
+            var local = route.Gateway != null ? Net.PingHost(route.Gateway) : null;
             var internet = Net.PingHost("1.1.1.1");
-            Host.Dispatcher.Invoke(() =>
-            {
-                _ping.Text = $"Ping internet (1.1.1.1): {internet}\n" +
-                             $"Ping router: {(local?.ToString() ?? "sem gateway")}";
-                _diag.Text = Net.Diagnose(internet, local, null, null);
-            });
+            Host.Dispatcher.Invoke(() => ApplyRoute(route, local, internet));
             return null;
         }, "A medir ping...");
     }
@@ -124,14 +185,7 @@ public sealed class NetworkPage : PageBase
             var upBps = Net.BitsPerSecond(upBytes, upSeconds);
             Host.Dispatcher.Invoke(() =>
             {
-                _route = route;
-                _info.Text =
-                    $"Adaptador: {(string.IsNullOrEmpty(route.Adapter) ? "nao detetado" : route.Adapter)}\n" +
-                    $"Gateway: {route.Gateway ?? "—"}\n" +
-                    $"DNS atuais: {(route.Dns.Count > 0 ? string.Join(", ", route.Dns) : "automatico")}\n" +
-                    $"Link: {route.Link ?? "—"}";
-                _ping.Text = $"Ping internet (1.1.1.1): {internet}\n" +
-                             $"Ping router: {(local?.ToString() ?? "sem gateway")}";
+                ApplyRoute(route, local, internet);
                 _speed.Text = $"Download: {Net.FormatMbps(downBps)}    Upload: {Net.FormatMbps(upBps)}";
                 _diag.Text = Net.Diagnose(internet, local, downBps, upBps);
             });
@@ -153,7 +207,8 @@ public sealed class NetworkPage : PageBase
                 _dnsStatus.Text = Dns.Recommendation(results);
                 _dnsChoices.Items.Clear();
                 foreach (var choice in Dns.Choices(results)) _dnsChoices.Items.Add(choice);
-                if (_dnsChoices.Items.Count > 0) _dnsChoices.SelectedIndex = 1;
+                _dnsChoices.Visibility = Visibility.Visible;
+                if (_dnsChoices.Items.Count > 1) _dnsChoices.SelectedIndex = 1;
             });
             return null;
         }, "Benchmark de DNS (aprox. 6 s)...");
@@ -161,8 +216,7 @@ public sealed class NetworkPage : PageBase
 
     private void ApplyDns()
     {
-        var choice = _dnsChoices.SelectedItem as string;
-        if (string.IsNullOrWhiteSpace(choice))
+        if (_dnsChoices.SelectedItem is not string choice || string.IsNullOrWhiteSpace(choice))
         {
             Host.Info("Escolhe um resolvedor na lista.", "DNS");
             return;
@@ -190,7 +244,7 @@ public sealed class NetworkPage : PageBase
                 Log.Write(ok ? $"netsh {args}" : $"netsh falhou: {output}", ok ? "INFO" : "ERRO");
             }
             Proc.Run("ipconfig.exe", "/flushdns");
-            Host.Dispatcher.Invoke(RefreshRoute);
+            Host.Dispatcher.Invoke(() => AutoAnalyse(force: true));
             return "DNS aplicado. Reinicia o browser para usar o novo resolvedor.";
         }, "A aplicar DNS...");
     }
@@ -210,7 +264,7 @@ public sealed class NetworkPage : PageBase
             foreach (var command in Dns.ChangeCommands(alias, null))
                 Proc.Run("netsh.exe", "interface " + string.Join(' ', command));
             Proc.Run("ipconfig.exe", "/flushdns");
-            Host.Dispatcher.Invoke(RefreshRoute);
+            Host.Dispatcher.Invoke(() => AutoAnalyse(force: true));
             return "DNS voltou a automatico (DHCP).";
         }, "A restaurar DNS automatico...");
     }
