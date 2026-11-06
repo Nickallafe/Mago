@@ -1,6 +1,10 @@
 # Build e artefatos do PyInstaller
 build/
 dist/
+
+# Instalador gerado pelo build-installer.ps1 (vai na release, nao no git)
+MagoSetup-*.exe
+MagoSetup-*.exe.sha256
 *.pyz
 __pycache__/
 *.py[cod]
