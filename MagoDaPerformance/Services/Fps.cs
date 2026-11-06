@@ -21,15 +21,30 @@ public sealed class FpsMonitor : IDisposable
     public event Action<double, double, int>? Updated;
     public event Action<string>? Status;
 
+    /// <summary>Processos com janela visivel: os que fazem sentido medir.</summary>
     public static List<string> Targets()
     {
-        var excluded = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "system", "idle", "dwm.exe" };
-        return Process.GetProcesses()
-            .Select(p => { try { return p.ProcessName + ".exe"; } catch { return ""; } })
-            .Where(n => n.Length > 0 && !excluded.Contains(n))
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .OrderBy(n => n, StringComparer.OrdinalIgnoreCase)
-            .ToList();
+        var excluded = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "system", "idle", "dwm.exe", "explorer.exe", "MagoDaPerformance.exe", "presentmon.exe",
+        };
+        var own = Environment.ProcessId;
+        var list = new List<string>();
+        foreach (var p in Process.GetProcesses())
+        {
+            try
+            {
+                if (p.Id == own || p.MainWindowHandle == IntPtr.Zero) continue;
+                var name = p.ProcessName + ".exe";
+                if (excluded.Contains(name)) continue;
+                list.Add(name);
+            }
+            catch { }
+            finally { p.Dispose(); }
+        }
+        return list.Distinct(StringComparer.OrdinalIgnoreCase)
+                   .OrderBy(n => n, StringComparer.OrdinalIgnoreCase)
+                   .ToList();
     }
 
     public static string? AutoLocatePresentMon()

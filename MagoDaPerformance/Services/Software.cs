@@ -177,7 +177,10 @@ public static class Software
 
     // ---------- arranque ----------
 
-    public sealed record StartupItem(string Name, string Hive, string Data, string HivePath);
+    public sealed record StartupItem(string Name, string Hive, string Data, string HivePath)
+    {
+        public override string ToString() => $"{Name}   [{Hive}]   {Data}";
+    }
 
     private static readonly (string Path, string Short)[] RunKeys =
     {

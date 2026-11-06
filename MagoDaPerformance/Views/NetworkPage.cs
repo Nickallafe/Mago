@@ -237,11 +237,10 @@ public sealed class NetworkPage : PageBase
 
         Host.RunTask(() =>
         {
-            foreach (var command in Dns.ChangeCommands(alias, provider.Primary, provider.Secondary))
+            foreach (var args in Dns.ChangeCommands(alias, provider.Primary, provider.Secondary))
             {
-                var args = "interface " + string.Join(' ', command);
                 var (ok, output) = Proc.Run("netsh.exe", args);
-                Log.Write(ok ? $"netsh {args}" : $"netsh falhou: {output}", ok ? "INFO" : "ERRO");
+                Log.Write(ok ? $"netsh {args}" : $"netsh falhou ({args}): {output}", ok ? "INFO" : "ERRO");
             }
             Proc.Run("ipconfig.exe", "/flushdns");
             Host.Dispatcher.Invoke(() => AutoAnalyse(force: true));
@@ -261,8 +260,8 @@ public sealed class NetworkPage : PageBase
 
         Host.RunTask(() =>
         {
-            foreach (var command in Dns.ChangeCommands(alias, null))
-                Proc.Run("netsh.exe", "interface " + string.Join(' ', command));
+            foreach (var args in Dns.ChangeCommands(alias, null))
+                Proc.Run("netsh.exe", args);
             Proc.Run("ipconfig.exe", "/flushdns");
             Host.Dispatcher.Invoke(() => AutoAnalyse(force: true));
             return "DNS voltou a automatico (DHCP).";

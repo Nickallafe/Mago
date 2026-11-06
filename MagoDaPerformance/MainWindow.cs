@@ -230,8 +230,22 @@ public partial class MainWindow : Window
         _pages["ferramentas"] = new ToolsPage(this);
     }
 
+    /// <summary>Aceita as chaves internas e os nomes que aparecem na barra lateral.</summary>
+    private static string ResolvePage(string key) => key switch
+    {
+        "aplicativos" or "app" or "programas" => "apps",
+        "backup" or "restauro" or "restore" => "backup",
+        "bios" or "firmware" => "bios",
+        "ferramentas" or "tools" => "ferramentas",
+        "otimizar" or "otimizacoes" or "optimize" => "otimizar",
+        "rede" or "network" => "rede",
+        _ => key,
+    };
+
     public void ShowPage(string key)
     {
+        key = ResolvePage(key);
+        if (!_pages.ContainsKey(key)) key = "painel";
         if (!_pages.TryGetValue(key, out var page)) return;
         _host.Content = page.Root;
         // Cada pagina pode carregar o que precisa ao ficar visivel (ex.: pre-analise de rede).

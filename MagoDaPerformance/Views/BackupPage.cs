@@ -8,11 +8,12 @@ public sealed class BackupPage : PageBase
     private readonly TextBlock _info;
     private readonly ListBox _points;
     private readonly TextBlock _pointsStatus;
+    private bool _loaded;
 
     public BackupPage(MainWindow host) : base(host, "Backup e restauro",
         "O backup guarda os valores originais de registo, servicos, BCD, energia e arranque.")
     {
-        var card = Card("BACKUP MAGO", 620);
+        var card = Card("BACKUP MAGO", 480);
         var body = BodyOf(card);
         _info = Ui.Mono("", 11, Ui.Txt);
         body.Children.Add(_info);
@@ -23,7 +24,7 @@ public sealed class BackupPage : PageBase
             Ui.Btn("Importar", Import),
             Ui.Btn("Abrir snapshots", () => { Directory.CreateDirectory(Paths.SnapshotDir); Proc.OpenUri(Paths.SnapshotDir); })));
 
-        var pointsCard = Card("PONTOS DE RESTAURO DO WINDOWS", 620);
+        var pointsCard = Card("PONTOS DE RESTAURO DO WINDOWS", 480);
         var pointsBody = BodyOf(pointsCard);
         _points = Ui.List(200);
         _pointsStatus = Ui.Lbl("", 11, Ui.Dim);
@@ -39,7 +40,13 @@ public sealed class BackupPage : PageBase
         pointsBody.Children.Add(_pointsStatus);
 
         Add(Row(card, pointsCard));
+    }
+
+    public override void OnShown()
+    {
         RefreshInfo();
+        if (_loaded) return;
+        _loaded = true;
         LoadPoints();
     }
 

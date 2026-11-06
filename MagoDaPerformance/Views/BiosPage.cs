@@ -7,6 +7,7 @@ public sealed class BiosPage : PageBase
 {
     private readonly TextBlock _text;
     private Dictionary<string, string?>? _info;
+    private bool _loaded;
 
     public BiosPage(MainWindow host) : base(host, "BIOS e firmware",
         "Identifica o firmware, a board, o Secure Boot e o TPM. Atualizacoes vem do fabricante.")
@@ -21,6 +22,12 @@ public sealed class BiosPage : PageBase
             Ui.Btn("Windows Update", () => Proc.OpenUri("ms-settings:windowsupdate"))));
 
         Add(Row(card));
+    }
+
+    public override void OnShown()
+    {
+        if (_loaded) return;
+        _loaded = true;
         Analyze();
     }
 

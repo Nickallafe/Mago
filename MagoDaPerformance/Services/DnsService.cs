@@ -193,20 +193,23 @@ public static class Dns
         return null;
     }
 
-    /// <summary>Comandos netsh para fixar (ou limpar) o DNS de um adaptador.</summary>
-    public static List<string[]> ChangeCommands(string alias, string? primary, string? secondary = "")
+    /// <summary>
+    /// Argumentos completos de netsh para fixar (ou limpar) o DNS de um adaptador.
+    /// O nome vai entre aspas porque pode ter espacos ("Ethernet 2").
+    /// </summary>
+    public static List<string> ChangeCommands(string alias, string? primary, string? secondary = "")
     {
         if (string.IsNullOrWhiteSpace(alias)) throw new ArgumentException("adaptador vazio");
-        var target = "name=" + alias;
+        var target = $"name=\"{alias}\"";
         if (string.IsNullOrWhiteSpace(primary))
-            return new List<string[]> { new[] { "interface", "ipv4", "set", "dns", target, "dhcp" } };
+            return new List<string> { $"interface ipv4 set dns {target} dhcp" };
 
-        var commands = new List<string[]>
+        var commands = new List<string>
         {
-            new[] { "interface", "ipv4", "set", "dns", target, "static", primary!, "primary" },
+            $"interface ipv4 set dns {target} static {primary} primary",
         };
         if (!string.IsNullOrWhiteSpace(secondary))
-            commands.Add(new[] { "interface", "ipv4", "add", "dns", target, secondary!, "index=2" });
+            commands.Add($"interface ipv4 add dns {target} {secondary} index=2");
         return commands;
     }
 }

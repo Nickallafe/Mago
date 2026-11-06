@@ -7,11 +7,12 @@ public sealed class ToolsPage : PageBase
 {
     private readonly ListBox _startup;
     private readonly TextBlock _startupStatus;
+    private bool _loaded;
 
     public ToolsPage(MainWindow host) : base(host, "Ferramentas",
         "Utilitarios de manutencao e controlo dos programas de arranque.")
     {
-        var utils = Card("UTILITARIOS", 400);
+        var utils = Card("UTILITARIOS", 360);
         var utilsBody = BodyOf(utils);
         utilsBody.Children.Add(Ui.Wrap(
             Ui.Btn("Efeitos visuais: desempenho", () => Host.RunTask(() => { Host.Engine.VisualEffectsPerf(); return null; }, "Efeitos visuais...")),
@@ -25,9 +26,9 @@ public sealed class ToolsPage : PageBase
             Ui.Btn("Abrir log", () => Proc.OpenUri(Paths.LogFile)),
             Ui.Btn("Abrir pasta de dados", () => Proc.OpenUri(Paths.DataDir))));
 
-        var startupCard = Card("PROGRAMAS DE ARRANQUE", 620);
+        var startupCard = Card("PROGRAMAS DE ARRANQUE", 600);
         var startupBody = BodyOf(startupCard);
-        _startup = Ui.List(300);
+        _startup = Ui.TextList(240);
         _startupStatus = Ui.Lbl("", 11, Ui.Dim);
         startupBody.Children.Add(Ui.Wrap(
             Ui.Btn("Listar", LoadStartup),
@@ -36,6 +37,12 @@ public sealed class ToolsPage : PageBase
         startupBody.Children.Add(_startupStatus);
 
         Add(Row(utils, startupCard));
+    }
+
+    public override void OnShown()
+    {
+        if (_loaded) return;
+        _loaded = true;
         LoadStartup();
     }
 
@@ -54,6 +61,8 @@ public sealed class ToolsPage : PageBase
                 _startupStatus.Text = items.Count == 0
                     ? "Nenhum programa nas chaves Run do utilizador e do computador."
                     : $"{items.Count} programas de arranque encontrados.";
+                // Altura acompanha o numero de itens quando cabem todos.
+                _startup.Height = items.Count <= 8 ? Math.Max(items.Count * 32, 40) : 260;
             });
         });
     }

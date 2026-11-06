@@ -149,7 +149,8 @@ public static class Ui
     }
 
     public static ListBox List(double height = 220)
-        => new()
+    {
+        var list = new ListBox
         {
             Height = height,
             Background = Br(Color.FromRgb(0x05, 0x07, 0x0B)),
@@ -159,12 +160,29 @@ public static class Ui
             FontSize = 12,
             Margin = new Thickness(0, 4, 0, 8),
         };
+        // Sem barra horizontal: ela aparece branca no tema escuro e corta o texto.
+        ScrollViewer.SetHorizontalScrollBarVisibility(list, ScrollBarVisibility.Disabled);
+        return list;
+    }
+
+    /// <summary>Lista de texto com quebra de linha e tooltip (caminhos longos ficam legiveis).</summary>
+    public static ListBox TextList(double height = 220)
+    {
+        var list = List(height);
+        var text = new FrameworkElementFactory(typeof(TextBlock));
+        text.SetBinding(TextBlock.TextProperty, new System.Windows.Data.Binding());
+        text.SetBinding(FrameworkElement.ToolTipProperty, new System.Windows.Data.Binding());
+        text.SetValue(TextBlock.TextWrappingProperty, TextWrapping.Wrap);
+        list.ItemTemplate = new DataTemplate { VisualTree = text };
+        return list;
+    }
 
     public static ScrollViewer Scroll(UIElement content) => new()
     {
         Content = content,
         VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
-        HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
+        // Auto: em janelas estreitas os cartoes largos passam a ter barra em vez de serem cortados.
+        HorizontalScrollBarVisibility = ScrollBarVisibility.Auto,
         Padding = new Thickness(2, 2, 10, 2),
     };
 }

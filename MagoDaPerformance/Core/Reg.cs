@@ -29,6 +29,22 @@ public static class Reg
         return string.IsNullOrEmpty(sub) ? baseKey : baseKey.OpenSubKey(sub, writable);
     }
 
+    /// <summary>Abre para escrita e cria a chave se ainda nao existir.</summary>
+    public static RegistryKey? OpenForWrite(string path)
+    {
+        var (hive, sub) = Parse(path);
+        var baseKey = RegistryKey.OpenBaseKey(hive, RegistryView.Default);
+        if (string.IsNullOrEmpty(sub)) return baseKey;
+        try
+        {
+            return baseKey.CreateSubKey(sub, true);
+        }
+        finally
+        {
+            baseKey.Dispose();
+        }
+    }
+
     public static string KindToName(RegistryValueKind kind) => kind switch
     {
         RegistryValueKind.String => "REG_SZ",
@@ -89,7 +105,8 @@ public static class Reg
     {
         try
         {
-            using var k = Open(key, true);
+            // CreateSubKey: varias chaves alvo (NVTweak, GameDVR...) podem nao existir.
+            using var k = OpenForWrite(key);
             if (k == null) return false;
             var kind = NameToKind(type);
             object? value = kind switch

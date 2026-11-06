@@ -189,9 +189,14 @@ public sealed class TweakEngine
     public void TweakPower()
     {
         Backup.RememberPower(CurrentPowerGuid());
-        Proc.Run("powercfg.exe", "-duplicatescheme " + UltimateGuid);
-        var (ok, output) = Proc.Run("powercfg.exe", "-setactive " + UltimateGuid);
-        Log.Write(ok ? "Ultimate Performance ativo" : "Falha no plano de energia: " + output, ok ? "INFO" : "AVISO");
+        // -duplicatescheme devolve um GUID novo; o GUID do template nao serve para -setactive.
+        var (_, dupOut) = Proc.Run("powercfg.exe", "-duplicatescheme " + UltimateGuid);
+        var duplicated = System.Text.RegularExpressions.Regex.Match(
+            dupOut, "[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}");
+        var target = duplicated.Success ? duplicated.Value : UltimateGuid;
+        var (ok, output) = Proc.Run("powercfg.exe", "-setactive " + target);
+        Log.Write(ok ? "Ultimate Performance ativo (" + target + ")" : "Falha no plano de energia: " + output,
+            ok ? "INFO" : "AVISO");
     }
 
     public void TweakServices()
@@ -264,7 +269,11 @@ public sealed class TweakEngine
     public void TweakSsd()
     {
         Proc.Run("fsutil.exe", "behavior set DisableDeleteNotify 0");
-        Proc.Run("schtasks.exe", "/change /tn \"\\Microsoft\\Windows\\Defrag\\ScheduledDefrag\" /disable");
+        // Desativar a desfragmentacao agendada so faz sentido em SSD; em HDD e util.
+        if (HasHdd)
+            Log.Write("HDD detetado: desfragmentacao agendada mantida.", "AVISO");
+        else
+            Proc.Run("schtasks.exe", "/change /tn \"\\Microsoft\\Windows\\Defrag\\ScheduledDefrag\" /disable");
         if (Competitive)
         {
             SetReg(@"HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management\PrefetchParameters",

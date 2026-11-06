@@ -88,7 +88,10 @@ public sealed class BackupStore
         {
             if (string.IsNullOrEmpty(Data.Created)) Data.Created = DateTime.Now.ToString("yyyy-MM-ddTHH:mm:ss");
             Directory.CreateDirectory(System.IO.Path.GetDirectoryName(Path) ?? ".");
-            File.WriteAllText(Path, JsonSerializer.Serialize(Data, Options));
+            // Escreve num temporario e troca: um corte a meio nao corrompe o backup.
+            var temp = Path + ".tmp";
+            File.WriteAllText(temp, JsonSerializer.Serialize(Data, Options));
+            File.Move(temp, Path, true);
         }
     }
 

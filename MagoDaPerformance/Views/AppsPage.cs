@@ -9,6 +9,7 @@ public sealed class AppsPage : PageBase
     private readonly ListBox _list;
     private readonly TextBlock _status;
     private List<AppEntry> _all = new();
+    private bool _loaded;
 
     public AppsPage(MainWindow host) : base(host, "Aplicativos",
         "Lista o que esta instalado. Prefere sempre a desinstalacao oficial.")
@@ -19,7 +20,7 @@ public sealed class AppsPage : PageBase
         _search = Ui.Input("Pesquisar por nome, fabricante ou tipo...", 420);
         _search.TextChanged += (_, _) => ApplyFilter();
         _status = Ui.Lbl("Ainda nao carregado.", 11, Ui.Dim);
-        _list = Ui.List(420);
+        _list = Ui.TextList(420);
 
         body.Children.Add(Ui.Wrap(
             _search,
@@ -30,6 +31,13 @@ public sealed class AppsPage : PageBase
         body.Children.Add(_status);
 
         Add(Row(card));
+    }
+
+    /// <summary>A lista so e lida quando o utilizador abre a pagina.</summary>
+    public override void OnShown()
+    {
+        if (_loaded) return;
+        _loaded = true;
         LoadApps(false);
     }
 
