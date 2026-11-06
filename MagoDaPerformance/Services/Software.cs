@@ -15,8 +15,13 @@ public sealed class AppEntry
     public string Location { get; set; } = "";
     public string Pspath { get; set; } = "";
     public string Package { get; set; } = "";
+    public string RawName { get; set; } = "";
 
-    public override string ToString() => $"{Name}  {Version}  [{Publisher}]  {Type}";
+    public override string ToString()
+    {
+        var extra = string.IsNullOrWhiteSpace(Publisher) ? "" : $"  [{Publisher}]";
+        return $"{Name}  {Version}{extra}  {Type}";
+    }
 }
 
 public static class Software
@@ -48,15 +53,28 @@ public static class Software
             });
         }
 
+        // Get-StartApps da o nome amigavel das apps da Store (a package name e ilegivel).
+        var friendly = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var row in Proc.Ps("Get-StartApps | Select-Object Name,AppID", 60000))
+        {
+            var appId = Proc.Str(row, "AppID") ?? "";
+            var name = Proc.Str(row, "Name") ?? "";
+            var bang = appId.IndexOf('!');
+            if (bang > 0 && !string.IsNullOrWhiteSpace(name)) friendly[appId[..bang]] = name;
+        }
+
         var store = Proc.Ps(
             "Get-AppxPackage | Where-Object { -not $_.NonRemovable } | " +
             "Select-Object Name,Version,Publisher,PackageFullName,InstallLocation", 90000);
         foreach (var row in store)
         {
+            var raw = Proc.Str(row, "Name") ?? "";
             var publisher = Proc.Str(row, "Publisher") ?? "";
+            if (publisher.StartsWith("CN=", StringComparison.OrdinalIgnoreCase)) publisher = "";
             apps.Add(new AppEntry
             {
-                Name = Proc.Str(row, "Name") ?? "",
+                Name = friendly.GetValueOrDefault(FamilyName(Proc.Str(row, "PackageFullName") ?? "")) ?? raw,
+                RawName = raw,
                 Version = Proc.Str(row, "Version") ?? "",
                 Publisher = publisher.Length > 40 ? publisher[..40] : publisher,
                 Type = "Store",
@@ -71,6 +89,13 @@ public static class Software
         for (var i = 0; i < apps.Count; i++) apps[i].Id = i.ToString();
         Log.Write($"{apps.Count} aplicativos encontrados.");
         return apps;
+    }
+
+    /// <summary>De "Nome_1.0.0.0_x64__abc" para "Nome_abc" (package family name).</summary>
+    internal static string FamilyName(string packageFullName)
+    {
+        var parts = (packageFullName ?? "").Split('_', StringSplitOptions.RemoveEmptyEntries);
+        return parts.Length >= 5 ? parts[0] + "_" + parts[^1] : parts.FirstOrDefault() ?? "";
     }
 
     public static string PspathToReg(string pspath)

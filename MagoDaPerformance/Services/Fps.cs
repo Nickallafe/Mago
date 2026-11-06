@@ -1,5 +1,7 @@
 using System.Diagnostics;
 using System.Globalization;
+using System.IO.Compression;
+using System.Text.Json;
 
 namespace MagoDaPerformance;
 
@@ -49,14 +51,87 @@ public sealed class FpsMonitor : IDisposable
 
     public static string? AutoLocatePresentMon()
     {
-        try
+        foreach (var dir in new[] { AppContext.BaseDirectory, Path.Combine(Paths.DataDir, "presentmon") })
         {
-            var dir = AppContext.BaseDirectory;
-            var found = Directory.EnumerateFiles(dir, "PresentMon*64.exe", SearchOption.TopDirectoryOnly)
-                .OrderByDescending(f => f).FirstOrDefault();
-            return found;
+            try
+            {
+                if (!Directory.Exists(dir)) continue;
+                var found = Directory.EnumerateFiles(dir, "PresentMon*.exe", SearchOption.TopDirectoryOnly)
+                    .OrderByDescending(f => f).FirstOrDefault();
+                if (found != null) return found;
+            }
+            catch { }
         }
-        catch { return null; }
+        return null;
+    }
+
+    /// <summary>Descarrega o PresentMon mais recente do GitHub (exe direto ou zip).</summary>
+    public static string DownloadPresentMon(Action<string>? progress = null)
+    {
+        progress?.Invoke("A consultar a ultima versao do PresentMon...");
+        using var http = new HttpClient { Timeout = TimeSpan.FromMinutes(6) };
+        http.DefaultRequestHeaders.UserAgent.ParseAdd("MagoDaPerformance/6.0");
+        http.DefaultRequestHeaders.Accept.ParseAdd("application/vnd.github+json");
+
+        var json = http.GetStringAsync("https://api.github.com/repos/GameTechDev/PresentMon/releases/latest")
+            .GetAwaiter().GetResult();
+        using var doc = JsonDocument.Parse(json);
+        if (!doc.RootElement.TryGetProperty("assets", out var assets))
+            throw new InvalidOperationException("resposta do GitHub sem lista de ficheiros");
+
+        var files = assets.EnumerateArray()
+            .Select(a => (
+                Name: a.TryGetProperty("name", out var n) ? n.GetString() ?? "" : "",
+                Url: a.TryGetProperty("browser_download_url", out var u) ? u.GetString() ?? "" : ""))
+            .Where(f => f.Url.Length > 0)
+            .ToList();
+
+        var exe = files.FirstOrDefault(f =>
+            f.Name.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) &&
+            f.Name.Contains("x64", StringComparison.OrdinalIgnoreCase));
+        var zip = files.FirstOrDefault(f =>
+            f.Name.EndsWith(".zip", StringComparison.OrdinalIgnoreCase) &&
+            f.Name.Contains("x64", StringComparison.OrdinalIgnoreCase));
+
+        var dir = Path.Combine(Paths.DataDir, "presentmon");
+        Directory.CreateDirectory(dir);
+
+        if (!string.IsNullOrEmpty(exe.Name))
+        {
+            var dest = Path.Combine(dir, exe.Name);
+            DownloadTo(http, exe.Url, dest, progress);
+            return dest;
+        }
+        if (!string.IsNullOrEmpty(zip.Name))
+        {
+            var archive = Path.Combine(dir, zip.Name);
+            DownloadTo(http, zip.Url, archive, progress);
+            progress?.Invoke("A extrair...");
+            ZipFile.ExtractToDirectory(archive, dir, true);
+            try { File.Delete(archive); } catch { }
+            var found = Directory.EnumerateFiles(dir, "PresentMon*.exe", SearchOption.AllDirectories)
+                .OrderByDescending(f => f).FirstOrDefault();
+            if (found != null) return found;
+        }
+        throw new InvalidOperationException("a ultima release nao traz um PresentMon x64");
+    }
+
+    private static void DownloadTo(HttpClient http, string url, string destination, Action<string>? progress)
+    {
+        using var response = http.GetAsync(url, HttpCompletionOption.ResponseHeadersRead).GetAwaiter().GetResult();
+        response.EnsureSuccessStatusCode();
+        var total = response.Content.Headers.ContentLength ?? 0;
+        using var source = response.Content.ReadAsStream();
+        using var target = File.Create(destination);
+        var buffer = new byte[81920];
+        long received = 0;
+        int read;
+        while ((read = source.Read(buffer, 0, buffer.Length)) > 0)
+        {
+            target.Write(buffer, 0, read);
+            received += read;
+            if (total > 0) progress?.Invoke($"A descarregar... {received * 100 / total}%");
+        }
     }
 
     public bool Start(string presentMonPath, string processName, out string error)
@@ -150,7 +225,7 @@ public sealed class FpsMonitor : IDisposable
         catch { }
     }
 
-    private static List<string> SplitCsv(string line)
+    internal static List<string> SplitCsv(string line)
     {
         var cells = new List<string>();
         var current = new System.Text.StringBuilder();

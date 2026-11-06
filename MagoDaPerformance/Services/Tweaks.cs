@@ -98,6 +98,15 @@ public sealed class TweakEngine
 
     // ---------- BCD / energia ----------
 
+    /// <summary>O bcdedit traduz os booleanos ("Sim"/"Nao"); normaliza para yes/no.</summary>
+    internal static string? NormalizeBcdToken(string? value)
+    {
+        var v = (value ?? "").Trim().ToLowerInvariant();
+        if (v is "yes" or "sim" or "true" or "on" or "ativado" or "habilitado") return "yes";
+        if (v is "no" or "nao" or "não" or "false" or "off" or "desativado" or "desabilitado") return "no";
+        return value?.Trim();
+    }
+
     public BcdSnap SnapshotBcd(string name, bool overwrite = false)
     {
         var (ok, output) = Proc.Run("bcdedit.exe", "/enum {current}");
@@ -109,7 +118,7 @@ public sealed class TweakEngine
                 var line = raw.Trim();
                 if (!line.StartsWith(name, StringComparison.OrdinalIgnoreCase)) continue;
                 var parts = line.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-                if (parts.Length >= 2) value = parts[^1];
+                if (parts.Length >= 2) value = NormalizeBcdToken(parts[^1]);
             }
         }
         var snap = new BcdSnap { Existed = value != null, Value = value };
@@ -172,6 +181,7 @@ public sealed class TweakEngine
         SetReg(@"HKLM\SYSTEM\CurrentControlSet\Control\DeviceGuard", "EnableVirtualizationBasedSecurity", "REG_DWORD", "0");
         SetReg(@"HKLM\SYSTEM\CurrentControlSet\Control\DeviceGuard\Scenarios\HypervisorEnforcedCodeIntegrity", "Enabled", "REG_DWORD", "0");
         var (ok, output) = Proc.Run("powershell", "-NoProfile -NonInteractive -Command \"Disable-MMAgent -MemoryCompression\"");
+        if (ok) Backup.Data.Touched.MemoryCompression = true;
         Log.Write(ok ? "Compressao de memoria off" : "Falha MMAgent: " + output, ok ? "INFO" : "AVISO");
     }
 
@@ -186,14 +196,38 @@ public sealed class TweakEngine
         SetReg(@"HKCU\SOFTWARE\Microsoft\Windows\CurrentVersion\GameDVR", "AppCaptureEnabled", "REG_DWORD", "0");
     }
 
+    private static readonly System.Text.RegularExpressions.Regex GuidPattern = new(
+        "[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}");
+
     public void TweakPower()
     {
         Backup.RememberPower(CurrentPowerGuid());
         // -duplicatescheme devolve um GUID novo; o GUID do template nao serve para -setactive.
         var (_, dupOut) = Proc.Run("powercfg.exe", "-duplicatescheme " + UltimateGuid);
-        var duplicated = System.Text.RegularExpressions.Regex.Match(
-            dupOut, "[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}");
+        var duplicated = GuidPattern.Match(dupOut);
         var target = duplicated.Success ? duplicated.Value : UltimateGuid;
+
+        // Reaproveita um esquema com o mesmo nome para nao acumular duplicados a cada utilizacao.
+        if (duplicated.Success)
+        {
+            var nameMatch = System.Text.RegularExpressions.Regex.Match(dupOut, @"\(([^)]+)\)\s*$");
+            var duplicateName = nameMatch.Success ? nameMatch.Groups[1].Value.Trim() : "";
+            if (duplicateName.Length > 0)
+            {
+                var (_, list) = Proc.Run("powercfg.exe", "-list");
+                foreach (var line in list.Split('\n'))
+                {
+                    if (!line.Contains(duplicateName, StringComparison.OrdinalIgnoreCase)) continue;
+                    var existing = GuidPattern.Match(line);
+                    if (!existing.Success || existing.Value.Equals(target, StringComparison.OrdinalIgnoreCase)) continue;
+                    Proc.Run("powercfg.exe", "-delete " + target);
+                    target = existing.Value;
+                    Log.Write("Esquema de energia existente reaproveitado.");
+                    break;
+                }
+            }
+        }
+
         var (ok, output) = Proc.Run("powercfg.exe", "-setactive " + target);
         Log.Write(ok ? "Ultimate Performance ativo (" + target + ")" : "Falha no plano de energia: " + output,
             ok ? "INFO" : "AVISO");
@@ -249,6 +283,8 @@ public sealed class TweakEngine
             Proc.Run("netsh.exe", "int tcp set global ecncapability=disabled");
             Proc.Run("netsh.exe", "int tcp set global timestamps=disabled");
         }
+        Backup.Data.Touched.TcpGlobals = true;
+        Backup.Save();
         Log.Write("Rede: modulo concluido.");
     }
 
@@ -280,6 +316,9 @@ public sealed class TweakEngine
                 "EnablePrefetcher", "REG_DWORD", "0");
             Proc.Run("powercfg.exe", "-h off");
         }
+        Backup.Data.Touched.Trim = true;
+        if (!HasHdd) Backup.Data.Touched.DefragTask = true;
+        Backup.Save();
         Log.Write("SSD: modulo concluido.");
     }
 
@@ -342,6 +381,33 @@ public sealed class TweakEngine
             }
             if (!string.IsNullOrEmpty(Backup.Data.PowerScheme))
                 Proc.Run("powercfg.exe", "-setactive " + Backup.Data.PowerScheme);
+
+            // Alteracoes que nao cabem num valor de registo: repor o comportamento padrao.
+            var touched = Backup.Data.Touched;
+            if (touched.DefragTask)
+            {
+                Proc.Run("schtasks.exe", "/change /tn \"\\Microsoft\\Windows\\Defrag\\ScheduledDefrag\" /enable");
+                Log.Write("Desfragmentacao agendada reativada.");
+            }
+            if (touched.MemoryCompression)
+            {
+                Proc.Run("powershell", "-NoProfile -NonInteractive -Command \"Enable-MMAgent -MemoryCompression\"");
+                Log.Write("Compressao de memoria reativada.");
+            }
+            if (touched.TcpGlobals)
+            {
+                Proc.Run("netsh.exe", "int tcp set global autotuninglevel=normal");
+                Proc.Run("netsh.exe", "int tcp set global ecncapability=disabled");
+                Proc.Run("netsh.exe", "int tcp set global timestamps=disabled");
+                Log.Write("Parametros TCP repostos.");
+            }
+            if (touched.Trim)
+            {
+                Proc.Run("fsutil.exe", "behavior set DisableDeleteNotify 0");
+                Log.Write("TRIM reativado.");
+            }
+            Backup.Data.Touched = new TouchedFlags();
+            Backup.Save();
 
             foreach (var (token, snap) in Backup.Data.Startup)
             {

@@ -1,3 +1,5 @@
+using System.Diagnostics;
+using System.Runtime.InteropServices;
 using System.Windows;
 
 namespace MagoDaPerformance;
@@ -6,6 +8,12 @@ public static class Program
 {
     /// <summary>Pagina a abrir; definida por --page=nome (usado em testes e atalhos).</summary>
     internal static string? StartPage { get; private set; }
+
+    // Mantido vivo durante toda a execucao: garante uma unica instancia.
+    private static Mutex? _singleInstance;
+
+    [DllImport("user32.dll")] private static extern bool SetForegroundWindow(IntPtr handle);
+    [DllImport("user32.dll")] private static extern bool ShowWindow(IntPtr handle, int command);
 
     [STAThread]
     public static int Main(string[] args)
@@ -18,6 +26,8 @@ public static class Program
         }
         if (args.Any(a => a.Equals("--selfcheck", StringComparison.OrdinalIgnoreCase)))
             return SelfCheck();
+
+        if (!SingleInstanceOk()) return 0;
 
         // Diagnostico: abre a janela e fecha sozinha (usado para validar a UI sem UAC).
         if (args.Any(a => a.Equals("--smoke", StringComparison.OrdinalIgnoreCase)))
@@ -45,6 +55,40 @@ public static class Program
             Dump("main", ex);
             MessageBox.Show(ex.Message, "Mago da Performance", MessageBoxButton.OK, MessageBoxImage.Error);
             return 4;
+        }
+    }
+
+    /// <summary>Impede duas copias a escrever no mesmo backup; foca a janela ja aberta.</summary>
+    private static bool SingleInstanceOk()
+    {
+        try
+        {
+            _singleInstance = new Mutex(true, @"Local\MagoDaPerformance.SingleInstance", out var created);
+            if (created) return true;
+            FocusExisting();
+            MessageBox.Show("O Mago da Performance ja esta aberto.", "MAGO DA PERFORMANCE",
+                MessageBoxButton.OK, MessageBoxImage.Information);
+            return false;
+        }
+        catch
+        {
+            return true; // sem mutex: nao vale a pena bloquear o arranque
+        }
+    }
+
+    private static void FocusExisting()
+    {
+        foreach (var process in Process.GetProcessesByName("MagoDaPerformance"))
+        {
+            try
+            {
+                if (process.MainWindowHandle == IntPtr.Zero) continue;
+                ShowWindow(process.MainWindowHandle, 9); // SW_RESTORE
+                SetForegroundWindow(process.MainWindowHandle);
+                break;
+            }
+            catch { }
+            finally { process.Dispose(); }
         }
     }
 

@@ -31,6 +31,17 @@ public sealed class StartupSnap
     [JsonPropertyName("data")] public string? Data { get; set; }
 }
 
+/// <summary>Alteracoes fora do registo/servicos que o restauro tem de desfazer.</summary>
+public sealed class TouchedFlags
+{
+    [JsonPropertyName("defrag_task")] public bool DefragTask { get; set; }
+    [JsonPropertyName("memory_compression")] public bool MemoryCompression { get; set; }
+    [JsonPropertyName("tcp_globals")] public bool TcpGlobals { get; set; }
+    [JsonPropertyName("trim")] public bool Trim { get; set; }
+
+    public bool Any => DefragTask || MemoryCompression || TcpGlobals || Trim;
+}
+
 public sealed class BackupData
 {
     [JsonPropertyName("created")] public string? Created { get; set; }
@@ -40,6 +51,7 @@ public sealed class BackupData
     [JsonPropertyName("power_scheme")] public string? PowerScheme { get; set; }
     [JsonPropertyName("startup")] public Dictionary<string, StartupSnap> Startup { get; set; } = new();
     [JsonPropertyName("notes")] public List<string> Notes { get; set; } = new();
+    [JsonPropertyName("touched")] public TouchedFlags Touched { get; set; } = new();
 }
 
 public sealed class BackupStore
