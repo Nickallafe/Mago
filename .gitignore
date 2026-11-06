@@ -28,3 +28,6 @@ bin/
 obj/
 publish/
 *.pdb
+
+# Captura de ecra usada em revisao visual
+ui-print.png

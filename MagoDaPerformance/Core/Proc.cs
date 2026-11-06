@@ -85,10 +85,20 @@ public static class Proc
             if (string.IsNullOrEmpty(raw)) return new();
             using var doc = JsonDocument.Parse(raw);
             var list = new List<JsonElement>();
-            if (doc.RootElement.ValueKind == JsonValueKind.Array)
-                list.AddRange(doc.RootElement.EnumerateArray().Select(e => e.Clone()));
-            else if (doc.RootElement.ValueKind == JsonValueKind.Object)
-                list.Add(doc.RootElement.Clone());
+            switch (doc.RootElement.ValueKind)
+            {
+                case JsonValueKind.Array:
+                    list.AddRange(doc.RootElement.EnumerateArray().Select(e => e.Clone()));
+                    break;
+                // Um unico resultado pode vir como objeto ou como escalar (string/numero).
+                case JsonValueKind.Object:
+                case JsonValueKind.String:
+                case JsonValueKind.Number:
+                case JsonValueKind.True:
+                case JsonValueKind.False:
+                    list.Add(doc.RootElement.Clone());
+                    break;
+            }
             return list;
         }
         catch (Exception ex)

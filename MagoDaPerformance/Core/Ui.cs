@@ -56,6 +56,7 @@ public static class Ui
             Background = Br(primary ? Green : Color.FromRgb(0x1B, 0x24, 0x30)),
             BorderBrush = Br(primary ? Green : Line),
             Padding = new Thickness(14, 8, 14, 8),
+            MinHeight = 34,
             Margin = new Thickness(0, 0, 8, 8),
             FontFamily = UiFont,
             FontSize = 12,
@@ -78,10 +79,12 @@ public static class Ui
         border.SetBinding(Border.BorderBrushProperty, new System.Windows.Data.Binding("BorderBrush")
         { RelativeSource = System.Windows.Data.RelativeSource.TemplatedParent });
         border.SetValue(Border.BorderThicknessProperty, new Thickness(1));
+        // O Padding vai para a Border: no ContentPresenter ele nao deslocava o texto.
+        border.SetBinding(Border.PaddingProperty, new System.Windows.Data.Binding("Padding")
+        { RelativeSource = System.Windows.Data.RelativeSource.TemplatedParent });
         var presenter = new FrameworkElementFactory(typeof(ContentPresenter));
         presenter.SetValue(FrameworkElement.HorizontalAlignmentProperty, HorizontalAlignment.Center);
         presenter.SetValue(FrameworkElement.VerticalAlignmentProperty, VerticalAlignment.Center);
-        presenter.SetValue(FrameworkElement.MarginProperty, new Thickness(0, 1, 0, 1));
         border.AppendChild(presenter);
 
         return new ControlTemplate(typeof(Button)) { VisualTree = border };

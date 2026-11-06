@@ -14,6 +14,7 @@ public partial class MainWindow : Window
     private readonly TextBox _console = new();
     private readonly ProgressBar _bar = new();
     private readonly DispatcherTimer _timer;
+    private PanelPage? _panel;
 
     public BackupStore Store { get; }
     public TweakEngine Engine { get; }
@@ -83,7 +84,13 @@ public partial class MainWindow : Window
                 try
                 {
                     var hw = SystemInfo.Detect();
-                    Dispatcher.Invoke(() => { Hardware = hw; Engine.GpuName = hw.Gpu; Engine.DiskTypes = hw.DiskTypes; });
+                    Dispatcher.Invoke(() =>
+                    {
+                        Hardware = hw;
+                        Engine.GpuName = hw.Gpu;
+                        Engine.DiskTypes = hw.DiskTypes;
+                        _panel?.SetHardware(hw);
+                    });
                 }
                 catch (Exception ex) { Log.Write(ex.Message, "ERRO"); }
             });
@@ -91,6 +98,8 @@ public partial class MainWindow : Window
 
         Closing += (_, _) =>
         {
+            // Regista o fecho normal: se o log nao tiver esta linha, o processo foi morto.
+            Log.Write("A fechar a janela principal.");
             Fps.Dispose();
             try { Overlay?.Close(); } catch { }
         };
@@ -151,7 +160,8 @@ public partial class MainWindow : Window
                 Background = Brushes.Transparent,
                 BorderThickness = new Thickness(0),
                 HorizontalContentAlignment = HorizontalAlignment.Left,
-                Padding = new Thickness(24, 16, 24, 16),
+                Padding = new Thickness(24, 14, 24, 14),
+                Margin = new Thickness(0, 1, 0, 1),
                 FontSize = 12,
                 FontWeight = FontWeights.Bold,
                 Cursor = System.Windows.Input.Cursors.Hand,
@@ -184,9 +194,10 @@ public partial class MainWindow : Window
         var border = new FrameworkElementFactory(typeof(Border));
         border.SetBinding(Border.BackgroundProperty, new System.Windows.Data.Binding("Background")
         { RelativeSource = System.Windows.Data.RelativeSource.TemplatedParent });
+        border.SetBinding(Border.PaddingProperty, new System.Windows.Data.Binding("Padding")
+        { RelativeSource = System.Windows.Data.RelativeSource.TemplatedParent });
         var presenter = new FrameworkElementFactory(typeof(ContentPresenter));
         presenter.SetValue(FrameworkElement.VerticalAlignmentProperty, VerticalAlignment.Center);
-        presenter.SetValue(FrameworkElement.MarginProperty, new Thickness(0));
         border.AppendChild(presenter);
         return new ControlTemplate(typeof(Button)) { VisualTree = border };
     }
@@ -217,7 +228,8 @@ public partial class MainWindow : Window
 
     private void BuildPages()
     {
-        _pages["painel"] = new PanelPage(this).Root;
+        _panel = new PanelPage(this);
+        _pages["painel"] = _panel.Root;
         _pages["otimizar"] = new OptimizePage(this).Root;
         _pages["rede"] = new NetworkPage(this).Root;
         _pages["apps"] = new AppsPage(this).Root;

@@ -18,7 +18,7 @@ public sealed class PanelPage : PageBase
         "Visao rapida do hardware, BIOS e atalhos de manutencao.")
     {
         // --- hardware
-        var hwCard = Card("HARDWARE E SISTEMA", 520);
+        var hwCard = Card("HARDWARE E SISTEMA", 480);
         var hwBody = BodyOf(hwCard);
         _hw = Ui.Mono("A ler hardware...", 11, Ui.Txt);
         hwBody.Children.Add(_hw);
@@ -38,12 +38,13 @@ public sealed class PanelPage : PageBase
             Ui.Btn("Abrir log", () => Proc.OpenUri(Paths.LogFile))));
 
         // --- FPS
-        var fpsCard = Card("FPS (PRESENTMON)", 520);
+        var fpsCard = Card("FPS (PRESENTMON)", 480);
         var fpsBody = BodyOf(fpsCard);
         _fpsValue = Ui.Mono("FPS --   media --", 26, Ui.Green);
         _fpsStatus = Ui.Lbl("Selecione o executavel do jogo e o PresentMon.", 11, Ui.Dim);
 
-        _presentMon = Ui.Input("PresentMon-2.6.0-x64.exe", 330);
+        _presentMon = Ui.Input("PresentMon-2.6.0-x64.exe", 430);
+        _presentMon.Margin = new Thickness(0, 6, 8, 8);
         _presentMon.Text = FpsMonitor.AutoLocatePresentMon() ?? "";
         _targets = Ui.List(150);
         _fpsButton = Ui.Btn("INICIAR MEDICAO", ToggleFps);
@@ -67,7 +68,7 @@ public sealed class PanelPage : PageBase
         fpsBody.Children.Add(Ui.Wrap(_fpsButton, _overlay, Ui.Btn("Reiniciar contagem", ResetFps)));
 
         // --- manutencao
-        var quickCard = Card("MANUTENCAO RAPIDA", 380);
+        var quickCard = Card("MANUTENCAO RAPIDA", 480);
         var quickBody = BodyOf(quickCard);
         _stress = Ui.Lbl("", 11, Ui.Dim);
         quickBody.Children.Add(Ui.Wrap(

@@ -27,6 +27,8 @@ public abstract class PageBase
     {
         var card = Ui.CardBox(title, out var body);
         card.Width = width;
+        // Sem isto o WrapPanel estica todos os cartoes da linha a altura do mais alto.
+        card.VerticalAlignment = VerticalAlignment.Top;
         body.Tag = card;
         return card;
     }
