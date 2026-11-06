@@ -74,8 +74,10 @@ public static class Proc
         var outFile = Path.ChangeExtension(scriptFile, ".json");
         try
         {
-            var script = "$ErrorActionPreference='SilentlyContinue'\n" + command +
-                         "\n| ConvertTo-Json -Depth 6 -Compress | Out-File -FilePath '" + outFile + "' -Encoding utf8\n";
+            // O comando corre dentro de um script block (& { }), que aceita varias
+            // instrucoes e blocos try/catch; o resultado e depois convertido em JSON.
+            var script = "$ErrorActionPreference='SilentlyContinue'\n$__mago = & {\n" + command +
+                         "\n}\n$__mago | ConvertTo-Json -Depth 6 -Compress | Out-File -FilePath '" + outFile + "' -Encoding utf8\n";
             File.WriteAllText(scriptFile, script, new UTF8Encoding(true));
             Run("powershell", "-NoProfile -NonInteractive -ExecutionPolicy Bypass -File \"" + scriptFile + "\"", timeoutMs);
             if (!File.Exists(outFile)) return new();
