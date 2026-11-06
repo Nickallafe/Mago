@@ -39,13 +39,19 @@ if (-not (Test-Path -LiteralPath $issFile)) { throw "MagoSetup.iss nao encontrad
 # 1. Executavel standalone
 if (-not $SkipExe) {
     Write-Host "Gerando $exePath ..." -ForegroundColor Cyan
+    $pyLog = Join-Path $root 'pyinstaller.log'
     Push-Location $root
     try {
-        pyinstaller --noconfirm --clean mago.spec 2>&1 | Tee-Object -Variable pyOut | Out-Null
-        if ($LASTEXITCODE -ne 0) { $pyOut | Select-Object -Last 25 | Write-Host; throw "PyInstaller falhou (exit $LASTEXITCODE)." }
+        cmd /c "python -m PyInstaller --noconfirm --clean mago.spec > `"$pyLog`" 2>&1"
+        $pyCode = $LASTEXITCODE
     } finally {
         Pop-Location
     }
+    if ($pyCode -ne 0) {
+        Get-Content -LiteralPath $pyLog -Tail 25 | Write-Host
+        throw "PyInstaller falhou (exit $pyCode). Se faltar o pacote: python -m pip install --upgrade pyinstaller"
+    }
+    Remove-Item -LiteralPath $pyLog -Force -ErrorAction SilentlyContinue
 }
 if (-not (Test-Path -LiteralPath $exePath)) {
     throw "MagoDaPerformance.exe nao encontrado em $distDir. Rode sem -SkipExe ou gere o exe antes."
