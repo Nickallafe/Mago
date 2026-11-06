@@ -1,19 +1,19 @@
 ; Instalador do Mago da Performance.
 ;
-; Compile com build-installer.ps1 (que roda o PyInstaller antes) ou direto:
-;   "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" /DMyVersion=0.1.2 MagoSetup.iss
+; Compile com build-installer.ps1 (que corre o dotnet publish antes) ou direto:
+;   "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" /DMyVersion=0.2.0 MagoSetup.iss
 ;
 ; Entradas:
-;   MyVersion    versao que aparece no nome do setup (default 0.1.2)
-;   MySourceDir  pasta onde esta MagoDaPerformance.exe (default dist)
+;   MyVersion    versao que aparece no nome do setup (default 0.2.0)
+;   MySourceDir  pasta onde esta MagoDaPerformance.exe (default publish)
 ;   MyOutputDir  pasta onde o setup e escrito (default .)
 
 #ifndef MyVersion
-  #define MyVersion "0.1.2"
+  #define MyVersion "0.2.0"
 #endif
 
 #ifndef MySourceDir
-  #define MySourceDir "dist"
+  #define MySourceDir "publish"
 #endif
 
 #ifndef MyOutputDir

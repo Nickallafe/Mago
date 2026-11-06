@@ -5,8 +5,8 @@ identifica hardware e BIOS, ajusta registo e serviços, controla programas de
 arranque, mede/liberta FPS, testa rede (download, upload, ping, DNS) e faz
 limpeza — sempre com backup e restauro das alterações.
 
-Interface em Tkinter, Python 3.8+ no código-fonte e **sem necessidade de Python**
-quando usado o executável ou o instalador pronto da release.
+Escrito em **C# / WPF (.NET 10)**. O executável publicado é *self-contained*:
+o PC do utilizador **não precisa de .NET nem de Python**.
 
 ## Baixar e usar
 
@@ -18,19 +18,30 @@ Duas formas, escolha uma:
 opcionalmente na Área de Trabalho, registra em *Aplicativos e recursos* e traz
 desinstalador próprio. Não precisa de administrador para instalar.
 
-**Portátil** — baixe `MagoDaPerformance-<versão>-win-x64.zip`, extraia numa pasta
-qualquer e rode **`MagoDaPerformance.exe`**.
+**Portátil** — baixe `MagoDaPerformance.exe` e coloque numa pasta qualquer.
 
 Em ambos os casos o app pede elevação (UAC) sozinho; aceite para abrir com
 permissões de administrador. Na primeira abertura ele coleta BIOS, hardware e a
 lista de aplicativos instalados, então a janela pode levar alguns segundos para
 ficar pronta.
 
+## Páginas
+
+| Página | O que faz |
+|--------|-----------|
+| **Painel** | Hardware, BIOS resumida, medidores de CPU/RAM/disco, FPS via PresentMon e manutenção rápida. |
+| **Otimizar** | Perfis Equilibrado/Competitivo e módulos: GPU/HAGS, Windows Gaming, registo multimédia, energia, serviços, temp+DNS, rede, input lag, SSD. |
+| **Rede** | Ping (router e internet), download/upload e benchmark de resolvedores DNS com troca por `netsh`. |
+| **Aplicativos** | Lista Win32 e Store, pesquisa, desinstalação oficial e remoção forçada. |
+| **Backup** | Captura, exportação/importação, restauro e pontos de restauro do Windows. |
+| **BIOS** | Firmware, board, Secure Boot, TPM e atalho ao suporte do fabricante. |
+| **Ferramentas** | Efeitos visuais, cache de shaders, arranque rápido, DNS, Explorer e programas de arranque. |
+
 ## Antes de otimizar
 
-Use **Backup e restauro → criar backup**. O arquivo fica em
+Use **Backup → Capturar agora**. O arquivo fica em
 `%LOCALAPPDATA%\MagoDaPerformance\mago_backup.json` e é o que permite desfazer
-ajustes de registo, serviços e arranque.
+ajustes de registo, serviços, BCD, energia e arranque.
 
 ## Onde ficam os dados
 
@@ -39,48 +50,53 @@ ajustes de registo, serviços e arranque.
 | `MagoDaPerformance_log.txt` | Log de tudo que o app fez. |
 | `mago_backup.json` | Backup dos valores alterados. |
 | `mago_snapshots/` | Cópias datadas do backup. |
+| `mago_settings.json` | Preferências (PresentMon, overlay). |
 
 Tudo em `%LOCALAPPDATA%\MagoDaPerformance\`.
 
 ## Compilar a partir do código
 
-Requisitos: Python 3.8+ e PyInstaller (e Inno Setup 6 para o instalador).
+Requisitos: .NET SDK 10 e, para o instalador, Inno Setup 6.
 
 ```bat
-python -m pip install --upgrade pyinstaller
-pyinstaller mago.spec
+dotnet build MagoDaPerformance\MagoDaPerformance.csproj -c Release
+dotnet run --project MagoDaPerformance\MagoDaPerformance.csproj
 ```
 
-O executável sai em `dist\MagoDaPerformance.exe` (onefile, sem console, com
-Python e `psutil` embutidos).
+Para gerar o executável portátil (um único `.exe`, sem .NET no destino):
+
+```bat
+dotnet publish MagoDaPerformance\MagoDaPerformance.csproj -c Release -r win-x64 ^
+  --self-contained true -p:PublishSingleFile=true ^
+  -p:EnableCompressionInSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true ^
+  -o publish
+```
 
 Para gerar também o instalador:
 
 ```bat
 winget install JRSoftware.InnoSetup
-powershell -ExecutionPolicy Bypass -File .\build-installer.ps1 -Version 0.1.2
+powershell -ExecutionPolicy Bypass -File .\build-installer.ps1 -Version 0.2.0
 ```
 
-Saída: `MagoSetup-0.1.2.exe` e o respetivo `.sha256` na raiz do repositório.
-O script roda o PyInstaller antes; use `-SkipExe` para reaproveitar o
-`dist\MagoDaPerformance.exe` já existente.
+Saída: `MagoSetup-0.2.0.exe` e o respetivo `.sha256` na raiz do repositório.
+O script publica o app antes; use `-SkipExe` para reaproveitar `publish\`.
 
-Para rodar direto do fonte, sem empacotar:
+Diagnóstico sem abrir a interface:
 
 ```bat
-python mago_da_performance.py
+publish\MagoDaPerformance.exe --selfcheck
 ```
 
 ## Conteúdo do repositório
 
-| Arquivo | Papel |
+| Caminho | Papel |
 |---------|-------|
-| `mago_da_performance.py` | Código do aplicativo. |
-| `mago.spec` | Receita do PyInstaller para gerar o `.exe`. |
+| `MagoDaPerformance/` | Projeto C#/WPF (Core, Services, Views). |
 | `MagoSetup.iss` | Script do Inno Setup que gera o instalador. |
-| `build-installer.ps1` | Gera o `.exe` e o instalador com um comando. |
+| `build-installer.ps1` | Publica o app e gera o instalador com um comando. |
 | `icon.ico` | Ícone do executável e do instalador. |
-| `icon.png` | Ícone usado na interface e na divulgação. |
+| `icon.png` | Ícone usado na divulgação. |
 
 ## Avisos
 
@@ -88,4 +104,4 @@ python mago_da_performance.py
   administrador** e deve ser testado em máquina real antes de divulgar.
 - Nem o `.exe` nem o instalador têm assinatura digital: o SmartScreen pode
   avisar e antivírus podem dar falso positivo. Baixe apenas desta página oficial.
-- O formato onefile extrai para `%TEMP%` a cada início (1–3 s a mais).
+- O executável self-contained é maior (~62 MB) porque leva o runtime .NET dentro.

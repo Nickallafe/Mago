@@ -1,0 +1,167 @@
+using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Media;
+
+namespace MagoDaPerformance;
+
+/// <summary>Paleta e fabricas de controles (UI montada em codigo, sem XAML).</summary>
+public static class Ui
+{
+    public static readonly Color Bg = Color.FromRgb(0x07, 0x09, 0x0E);
+    public static readonly Color Card = Color.FromRgb(0x0E, 0x13, 0x1C);
+    public static readonly Color Side = Color.FromRgb(0x0B, 0x0F, 0x16);
+    public static readonly Color Line = Color.FromRgb(0x1B, 0x24, 0x30);
+    public static readonly Color Txt = Color.FromRgb(0xE6, 0xED, 0xF3);
+    public static readonly Color Dim = Color.FromRgb(0x8A, 0x97, 0xA8);
+    public static readonly Color Green = Color.FromRgb(0x3D, 0xF5, 0x9A);
+    public static readonly Color Cyan = Color.FromRgb(0x5C, 0xD6, 0xFF);
+    public static readonly Color Gold = Color.FromRgb(0xFF, 0xC8, 0x5C);
+    public static readonly Color Purple = Color.FromRgb(0xA9, 0x7B, 0xFF);
+    public static readonly Color Red = Color.FromRgb(0xFF, 0x6B, 0x6B);
+
+    public static readonly FontFamily UiFont = new("Segoe UI");
+    public static readonly FontFamily MonoFont = new("Consolas");
+
+    public static SolidColorBrush Br(Color c, double opacity = 1)
+        => new(Color.FromArgb((byte)(opacity * 255), c.R, c.G, c.B));
+
+    public static TextBlock Lbl(string text, double size = 12, Color? fg = null, bool bold = false, bool wrap = true)
+        => new()
+        {
+            Text = text,
+            FontSize = size,
+            FontFamily = UiFont,
+            Foreground = Br(fg ?? Txt),
+            FontWeight = bold ? FontWeights.SemiBold : FontWeights.Normal,
+            TextWrapping = wrap ? TextWrapping.Wrap : TextWrapping.NoWrap,
+            Margin = new Thickness(0, 2, 0, 2),
+        };
+
+    public static TextBlock Mono(string text, double size = 11, Color? fg = null)
+        => new()
+        {
+            Text = text,
+            FontSize = size,
+            FontFamily = MonoFont,
+            Foreground = Br(fg ?? Green),
+            TextWrapping = TextWrapping.Wrap,
+        };
+
+    public static Button Btn(string text, Action onClick, Color? fg = null, bool primary = false)
+    {
+        var b = new Button
+        {
+            Content = text,
+            Foreground = Br(fg ?? (primary ? Color.FromRgb(0x04, 0x0A, 0x07) : Txt)),
+            Background = Br(primary ? Green : Color.FromRgb(0x1B, 0x24, 0x30)),
+            BorderBrush = Br(primary ? Green : Line),
+            Padding = new Thickness(14, 8, 14, 8),
+            Margin = new Thickness(0, 0, 8, 8),
+            FontFamily = UiFont,
+            FontSize = 12,
+            FontWeight = FontWeights.SemiBold,
+            Cursor = System.Windows.Input.Cursors.Hand,
+            Template = ButtonTemplate(),
+        };
+        b.Click += (_, _) => { try { onClick(); } catch (Exception ex) { Log.Write(ex.Message, "ERRO"); } };
+        b.MouseEnter += (_, _) => b.Opacity = 0.88;
+        b.MouseLeave += (_, _) => b.Opacity = 1.0;
+        return b;
+    }
+
+    private static ControlTemplate ButtonTemplate()
+    {
+        var border = new FrameworkElementFactory(typeof(Border));
+        border.SetValue(Border.CornerRadiusProperty, new CornerRadius(6));
+        border.SetBinding(Border.BackgroundProperty, new System.Windows.Data.Binding("Background")
+        { RelativeSource = System.Windows.Data.RelativeSource.TemplatedParent });
+        border.SetBinding(Border.BorderBrushProperty, new System.Windows.Data.Binding("BorderBrush")
+        { RelativeSource = System.Windows.Data.RelativeSource.TemplatedParent });
+        border.SetValue(Border.BorderThicknessProperty, new Thickness(1));
+        var presenter = new FrameworkElementFactory(typeof(ContentPresenter));
+        presenter.SetValue(FrameworkElement.HorizontalAlignmentProperty, HorizontalAlignment.Center);
+        presenter.SetValue(FrameworkElement.VerticalAlignmentProperty, VerticalAlignment.Center);
+        presenter.SetValue(FrameworkElement.MarginProperty, new Thickness(0, 1, 0, 1));
+        border.AppendChild(presenter);
+
+        return new ControlTemplate(typeof(Button)) { VisualTree = border };
+    }
+
+    /// <summary>Cartao com titulo; o corpo recebe os controles.</summary>
+    public static Border CardBox(string title, out StackPanel body)
+    {
+        body = new StackPanel { Margin = new Thickness(0) };
+        var stack = new StackPanel();
+        stack.Children.Add(new TextBlock
+        {
+            Text = title,
+            FontSize = 11,
+            FontWeight = FontWeights.Bold,
+            FontFamily = UiFont,
+            Foreground = Br(Cyan),
+            Margin = new Thickness(0, 0, 0, 8),
+        });
+        stack.Children.Add(body);
+        return new Border
+        {
+            Background = Br(Card),
+            BorderBrush = Br(Line),
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(8),
+            Padding = new Thickness(14),
+            Margin = new Thickness(0, 0, 12, 12),
+            Child = stack,
+        };
+    }
+
+    public static StackPanel Row(params UIElement[] items)
+    {
+        var p = new StackPanel { Orientation = Orientation.Horizontal };
+        foreach (var i in items) p.Children.Add(i);
+        return p;
+    }
+
+    public static WrapPanel Wrap(params UIElement[] items)
+    {
+        var p = new WrapPanel { Orientation = Orientation.Horizontal };
+        foreach (var i in items) p.Children.Add(i);
+        return p;
+    }
+
+    public static TextBox Input(string placeholder = "", double width = 320)
+    {
+        var tb = new TextBox
+        {
+            Width = width,
+            Padding = new Thickness(8, 6, 8, 6),
+            Background = Br(Color.FromRgb(0x05, 0x07, 0x0B)),
+            Foreground = Br(Txt),
+            BorderBrush = Br(Line),
+            CaretBrush = Br(Green),
+            FontFamily = UiFont,
+            Margin = new Thickness(0, 0, 8, 8),
+            ToolTip = placeholder,
+        };
+        return tb;
+    }
+
+    public static ListBox List(double height = 220)
+        => new()
+        {
+            Height = height,
+            Background = Br(Color.FromRgb(0x05, 0x07, 0x0B)),
+            Foreground = Br(Txt),
+            BorderBrush = Br(Line),
+            FontFamily = UiFont,
+            FontSize = 12,
+            Margin = new Thickness(0, 4, 0, 8),
+        };
+
+    public static ScrollViewer Scroll(UIElement content) => new()
+    {
+        Content = content,
+        VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+        HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
+        Padding = new Thickness(2, 2, 10, 2),
+    };
+}

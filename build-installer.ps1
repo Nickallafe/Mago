@@ -1,60 +1,65 @@
 #Requires -Version 5.1
 <#
 .SYNOPSIS
-  Gera o MagoDaPerformance.exe (PyInstaller) e o instalador MagoSetup-<versao>.exe.
+  Publica o Mago da Performance (C#/WPF) e gera o instalador MagoSetup-<versao>.exe.
 
 .DESCRIPTION
   Etapas:
-    1. pyinstaller mago.spec       -> dist\MagoDaPerformance.exe (sem Python no destino)
-    2. ISCC.exe MagoSetup.iss      -> MagoSetup-<versao>.exe (atalhos, desinstalador,
-                                      entrada em Aplicativos e recursos)
+    1. dotnet publish (self-contained, single file) -> publish\MagoDaPerformance.exe
+    2. ISCC.exe MagoSetup.iss -> MagoSetup-<versao>.exe (atalhos, desinstalador,
+       entrada em Aplicativos e recursos)
     3. grava MagoSetup-<versao>.exe.sha256
 
-  Precisa de: Python 3.8+ com PyInstaller (pip install pyinstaller) e
-  Inno Setup 6 (winget install JRSoftware.InnoSetup).
+  Requisitos: .NET SDK 10 e Inno Setup 6 (winget install JRSoftware.InnoSetup).
+  O PC do utilizador NAO precisa de .NET: o executavel leva o runtime embutido.
 
 .EXAMPLE
-  powershell -ExecutionPolicy Bypass -File .\build-installer.ps1 -Version 0.1.2
+  powershell -ExecutionPolicy Bypass -File .\build-installer.ps1 -Version 0.2.0
 
 .EXAMPLE
-  powershell -ExecutionPolicy Bypass -File .\build-installer.ps1 -Version 0.1.2 -SkipExe
+  powershell -ExecutionPolicy Bypass -File .\build-installer.ps1 -Version 0.2.0 -SkipExe
 #>
 [CmdletBinding()]
 param(
-    [string] $Version = '0.1.2',
-    [switch] $SkipExe,
-    [switch] $KeepBuild
+    [string] $Version = '0.2.0',
+    [switch] $SkipExe
 )
 
 $ErrorActionPreference = 'Stop'
 $root = if ($PSScriptRoot) { $PSScriptRoot } else { Split-Path -Parent $MyInvocation.MyCommand.Path }
 Set-Location -LiteralPath $root
 
-$distDir = Join-Path $root 'dist'
+$projectDir = Join-Path $root 'MagoDaPerformance'
+$distDir = Join-Path $root 'publish'
 $exePath = Join-Path $distDir 'MagoDaPerformance.exe'
 $issFile = Join-Path $root 'MagoSetup.iss'
+$project = Join-Path $projectDir 'MagoDaPerformance.csproj'
 
+if (-not (Test-Path -LiteralPath $project)) { throw "Projeto C# nao encontrado: $project" }
 if (-not (Test-Path -LiteralPath $issFile)) { throw "MagoSetup.iss nao encontrado em $root." }
 
-# 1. Executavel standalone
+# 0. Localizar o dotnet (PATH ou instalacao do usuario)
+$dotnet = (Get-Command dotnet -ErrorAction SilentlyContinue).Source
+if (-not $dotnet) {
+    $candidate = Join-Path $env:LOCALAPPDATA 'Microsoft\dotnet\dotnet.exe'
+    if (Test-Path -LiteralPath $candidate) { $dotnet = $candidate }
+}
+if (-not $dotnet -and -not $SkipExe) { throw "dotnet nao encontrado. Instale o .NET SDK 10." }
+
+# 1. Executavel self-contained
 if (-not $SkipExe) {
-    Write-Host "Gerando $exePath ..." -ForegroundColor Cyan
-    $pyLog = Join-Path $root 'pyinstaller.log'
-    Push-Location $root
-    try {
-        cmd /c "python -m PyInstaller --noconfirm --clean mago.spec > `"$pyLog`" 2>&1"
-        $pyCode = $LASTEXITCODE
-    } finally {
-        Pop-Location
+    Write-Host "Publicando app C# (self-contained, single file)..." -ForegroundColor Cyan
+    $log = Join-Path $root 'dotnet-publish.log'
+    cmd /c "`"$dotnet`" publish `"$project`" -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:EnableCompressionInSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:Version=$Version -o `"$distDir`" > `"$log`" 2>&1"
+    $code = $LASTEXITCODE
+    if ($code -ne 0) {
+        Get-Content -LiteralPath $log -Tail 25 | Write-Host
+        throw "dotnet publish falhou (exit $code). Detalhes em $log"
     }
-    if ($pyCode -ne 0) {
-        Get-Content -LiteralPath $pyLog -Tail 25 | Write-Host
-        throw "PyInstaller falhou (exit $pyCode). Se faltar o pacote: python -m pip install --upgrade pyinstaller"
-    }
-    Remove-Item -LiteralPath $pyLog -Force -ErrorAction SilentlyContinue
+    Remove-Item -LiteralPath $log -Force -ErrorAction SilentlyContinue
 }
 if (-not (Test-Path -LiteralPath $exePath)) {
-    throw "MagoDaPerformance.exe nao encontrado em $distDir. Rode sem -SkipExe ou gere o exe antes."
+    throw "MagoDaPerformance.exe nao encontrado em $distDir. Rode sem -SkipExe."
 }
 
 # 2. Instalador
@@ -81,13 +86,6 @@ if (-not (Test-Path -LiteralPath $setup)) { throw "Setup nao gerado: $setup" }
 # 3. Hash
 $hash = (Get-FileHash -LiteralPath $setup -Algorithm SHA256).Hash.ToLowerInvariant()
 "$hash  MagoSetup-$Version.exe" | Set-Content -LiteralPath "$setup.sha256" -Encoding ASCII
-
-if (-not $KeepBuild) {
-    foreach ($p in @('build', '__pycache__')) {
-        $full = Join-Path $root $p
-        if (Test-Path -LiteralPath $full) { Remove-Item -LiteralPath $full -Recurse -Force -ErrorAction SilentlyContinue }
-    }
-}
 
 Write-Host ""
 Write-Host "  Exe:   $exePath" -ForegroundColor Green

@@ -22,3 +22,9 @@ desktop.ini
 MagoDaPerformance_log.txt
 mago_backup.json
 mago_snapshots/
+
+# Build do projeto C#
+bin/
+obj/
+publish/
+*.pdb
