@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Globalization;
 using System.IO.Compression;
+using System.Net.Http;
 using System.Text.Json;
 
 namespace MagoDaPerformance;
