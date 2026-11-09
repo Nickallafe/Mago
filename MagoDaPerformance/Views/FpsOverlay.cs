@@ -16,6 +16,9 @@ public sealed class FpsOverlay : Window
         Background = Brushes.Transparent;
         Topmost = true;
         ShowInTaskbar = false;
+        // Nao roubar o foco do jogo ao ligar o overlay (causava minimizar/perda de foco).
+        ShowActivated = false;
+        Focusable = false;
         ResizeMode = ResizeMode.NoResize;
         SizeToContent = SizeToContent.WidthAndHeight;
         WindowStartupLocation = WindowStartupLocation.Manual;

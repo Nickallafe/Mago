@@ -332,7 +332,6 @@ public partial class MainWindow : Window
         {
             Overlay ??= new FpsOverlay();
             Overlay.Show();
-            Overlay.Activate();
         }
         else
         {

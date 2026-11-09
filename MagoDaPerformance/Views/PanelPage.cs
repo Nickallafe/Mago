@@ -19,6 +19,7 @@ public sealed class PanelPage : PageBase
     private readonly TextBlock _stress;
 
     private bool _scanning;
+    private bool _downloading;
 
     public PanelPage(MainWindow host) : base(host, "Bem-vindo",
         "Resumo do seu PC, drivers e atalhos do dia a dia.")
@@ -88,7 +89,7 @@ public sealed class PanelPage : PageBase
         fpsBody.Children.Add(_presentMon);
         fpsBody.Children.Add(Ui.Wrap(
             Ui.Btn("Localizar PresentMon", BrowsePresentMon),
-            Ui.Btn("Baixar", () => Proc.OpenUri("https://github.com/GameTechDev/PresentMon/releases/latest")),
+            Ui.Btn("Baixar", DownloadPresentMon),
             Ui.Btn("Listar jogos abertos", RefreshTargets)));
         fpsBody.Children.Add(_targets);
         fpsBody.Children.Add(Ui.Wrap(_fpsButton, _overlay, Ui.Btn("Reiniciar contagem", ResetFps)));
@@ -111,17 +112,26 @@ public sealed class PanelPage : PageBase
         Add(drv);
         Add(Row(fpsCard, quickCard));
 
-        Host.Fps.Updated += (current, average, samples) => Host.Dispatcher.Invoke(() =>
+        // BeginInvoke: o leitor do PresentMon nunca pode ficar bloqueado a espera da UI.
+        Host.Fps.Updated += (current, average, samples) =>
         {
-            _fpsValue.Text = $"FPS {current:0}   media {average:0}   ({samples} quadros)";
-            _fpsValue.Foreground = Ui.Br(current >= 60 ? Ui.Green : current >= 30 ? Ui.Gold : Ui.Red);
-            Host.UpdateOverlay(current);
-        });
-        Host.Fps.Status += text => Host.Dispatcher.Invoke(() =>
+            if (Host.Dispatcher.HasShutdownStarted) return;
+            Host.Dispatcher.BeginInvoke(new Action(() =>
+            {
+                _fpsValue.Text = $"FPS {current:0}   media {average:0}   ({samples} quadros)";
+                _fpsValue.Foreground = Ui.Br(current >= 60 ? Ui.Green : current >= 30 ? Ui.Gold : Ui.Red);
+                Host.UpdateOverlay(current);
+            }));
+        };
+        Host.Fps.Status += text =>
         {
-            _fpsStatus.Text = text;
-            _fpsButton.Content = "INICIAR MEDICAO";
-        });
+            if (Host.Dispatcher.HasShutdownStarted) return;
+            Host.Dispatcher.BeginInvoke(new Action(() =>
+            {
+                _fpsStatus.Text = text;
+                _fpsButton.Content = "INICIAR MEDICAO";
+            }));
+        };
     }
 
     private static StackPanel BodyOf(Border card) => (StackPanel)((StackPanel)card.Child).Children[1];
@@ -277,6 +287,54 @@ public sealed class PanelPage : PageBase
         }, "A instalar atualizacoes de driver...");
     }
 
+    /// <summary>Reaproveita um PresentMon ja descarregado quando a pagina volta a aparecer.</summary>
+    public override void OnShown()
+    {
+        if (string.IsNullOrWhiteSpace(_presentMon.Text))
+            _presentMon.Text = FpsMonitor.AutoLocatePresentMon() ?? "";
+    }
+
+    /// <summary>Descarrega e instala o PresentMon sem sair da app.</summary>
+    private void DownloadPresentMon()
+    {
+        if (_downloading) return;
+        _downloading = true;
+        _fpsStatus.Foreground = Ui.Br(Ui.Gold);
+        _fpsStatus.Text = "A descarregar o PresentMon do GitHub...";
+        System.Threading.Tasks.Task.Run(() =>
+        {
+            try
+            {
+                var path = FpsMonitor.DownloadPresentMon(progress =>
+                {
+                    if (Host.Dispatcher.HasShutdownStarted) return;
+                    Host.Dispatcher.BeginInvoke(new Action(() => _fpsStatus.Text = progress));
+                });
+                if (Host.Dispatcher.HasShutdownStarted) return;
+                Host.Dispatcher.BeginInvoke(new Action(() =>
+                {
+                    _presentMon.Text = path;
+                    _fpsStatus.Foreground = Ui.Br(Ui.Green);
+                    _fpsStatus.Text = "PresentMon pronto: " + System.IO.Path.GetFileName(path);
+                }));
+            }
+            catch (Exception ex)
+            {
+                Log.Write("Download PresentMon: " + ex.Message, "ERRO");
+                if (Host.Dispatcher.HasShutdownStarted) return;
+                Host.Dispatcher.BeginInvoke(new Action(() =>
+                {
+                    _fpsStatus.Foreground = Ui.Br(Ui.Gold);
+                    _fpsStatus.Text = "Falha ao baixar o PresentMon: " + ex.Message;
+                }));
+            }
+            finally
+            {
+                _downloading = false;
+            }
+        });
+    }
+
     private void BrowsePresentMon()
     {
         var dialog = new Microsoft.Win32.OpenFileDialog
@@ -323,7 +381,16 @@ public sealed class PanelPage : PageBase
             _fpsStatus.Text = "Escolha um jogo na lista (use \"Listar jogos abertos\").";
             return;
         }
-        if (Host.Fps.Start(_presentMon.Text.Trim().Trim('"'), target, out var error))
+        var presentMon = _presentMon.Text.Trim().Trim('"');
+        if (presentMon.Length == 0) presentMon = FpsMonitor.AutoLocatePresentMon() ?? "";
+        if (presentMon.Length == 0)
+        {
+            _fpsStatus.Foreground = Ui.Br(Ui.Gold);
+            _fpsStatus.Text = "PresentMon nao encontrado. Clique em Baixar.";
+            return;
+        }
+        _presentMon.Text = presentMon;
+        if (Host.Fps.Start(presentMon, target, out var error))
         {
             _fpsButton.Content = "PARAR MEDICAO";
             _fpsStatus.Text = $"A medir {target}. Se o jogo nao estiver aberto, aguarde.";
