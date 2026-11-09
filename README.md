@@ -76,16 +76,25 @@ Para gerar também o instalador:
 
 ```bat
 winget install JRSoftware.InnoSetup
-powershell -ExecutionPolicy Bypass -File .\build-installer.ps1 -Version 0.2.0
+powershell -ExecutionPolicy Bypass -File .\build-installer.ps1 -Version 0.2.3
 ```
 
-Saída: `MagoSetup-0.2.0.exe` e o respetivo `.sha256` na raiz do repositório.
+Saída: `MagoSetup-0.2.3.exe` e o respetivo `.sha256` na raiz do repositório.
 O script publica o app antes; use `-SkipExe` para reaproveitar `publish\`.
 
 Diagnóstico sem abrir a interface:
 
 ```bat
 publish\MagoDaPerformance.exe --selfcheck
+```
+
+## Testes
+
+Testes das funções puras (parsing de registo, nomes de apps da Store, CSV do
+PresentMon, tokens do BCD, caminhos seguros e round-trip do backup):
+
+```bat
+dotnet test tests\MagoDaPerformance.Tests\MagoDaPerformance.Tests.csproj
 ```
 
 ## Conteúdo do repositório
@@ -95,6 +104,7 @@ publish\MagoDaPerformance.exe --selfcheck
 | `MagoDaPerformance/` | Projeto C#/WPF (Core, Services, Views). |
 | `MagoSetup.iss` | Script do Inno Setup que gera o instalador. |
 | `build-installer.ps1` | Publica o app e gera o instalador com um comando. |
+| `tests/` | Projeto xUnit com os testes das funções puras. |
 | `icon.ico` | Ícone do executável e do instalador. |
 | `icon.png` | Ícone usado na divulgação. |
 
