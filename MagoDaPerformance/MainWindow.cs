@@ -25,15 +25,17 @@ public partial class MainWindow : Window
     public MainWindow()
     {
         Title = "MAGO DA PERFORMANCE v6.0";
-        Width = 1280;
-        Height = 860;
-        MinWidth = 1100;
+        MinWidth = 1200;
         MinHeight = 740;
+        // VisualStateManager breakpoints: Compact <768, Medium <1200, Wide >=1200
         Background = Ui.Br(Ui.Bg);
         WindowStartupLocation = WindowStartupLocation.CenterScreen;
         FontFamily = Ui.UiFont;
 
-        Directory.CreateDirectory(Paths.DataDir);
+        // VisualStateManager breakpoints for responsive layout
+        // Compact: <768, Medium: <1200, Wide: >=1200
+        SizeChanged += OnSizeChanged;
+        GoToStateBasedOnWidth();
         Store = new BackupStore(Paths.BackupFile);
         Engine = new TweakEngine(Store);
         Settings = AppSettings.Load();
@@ -450,5 +452,39 @@ public partial class MainWindow : Window
     public void UpdateOverlay(double fps)
     {
         if (Overlay is { IsVisible: true }) Overlay.UpdateFps(fps);
+    }
+
+    private void OnSizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        // VisualStateManager transition based on window width
+        if (ActualWidth >= 1200)
+        {
+            VisualStateManager.GoToState(this, "Wide", useTransitions: false);
+        }
+        else if (ActualWidth >= 768)
+        {
+            VisualStateManager.GoToState(this, "Medium", useTransitions: false);
+        }
+        else
+        {
+            VisualStateManager.GoToState(this, "Compact", useTransitions: false);
+        }
+    }
+
+    private void GoToStateBasedOnWidth()
+    {
+        // Initial state on window load
+        if (ActualWidth >= 1200)
+        {
+            VisualStateManager.GoToState(this, "Wide", useTransitions: false);
+        }
+        else if (ActualWidth >= 768)
+        {
+            VisualStateManager.GoToState(this, "Medium", useTransitions: false);
+        }
+        else
+        {
+            VisualStateManager.GoToState(this, "Compact", useTransitions: false);
+        }
     }
 }
