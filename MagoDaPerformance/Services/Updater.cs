@@ -153,8 +153,9 @@ public static class Updater
         var exe = Environment.ProcessPath;
         if (string.IsNullOrEmpty(exe) || !File.Exists(installerPath)) return false;
 
-        // cmd espera o instalador terminar e so depois arranca a versao nova.
-        var arguments = $"/c \"\"{installerPath}\" /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /CLOSEAPPLICATIONS & start \"\" \"{exe}\"\"";
+        // 'start /wait' e obrigatorio: o cmd nao espera por apps GUI, e sem isto o app
+        // reabria a meio da instalacao (ficheiros bloqueados, versao antiga).
+        var arguments = $"/c start /wait \"\" \"{installerPath}\" /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /CLOSEAPPLICATIONS & start \"\" \"{exe}\"\"";
         try
         {
             var psi = new ProcessStartInfo("cmd.exe", arguments)
