@@ -164,6 +164,68 @@ public class BackupRoundTripTests
     }
 }
 
+public class UpdaterTests
+{
+    private const string ReleaseJson = """
+    {
+      "tag_name": "v0.2.4",
+      "html_url": "https://github.com/Nickallafe/Mago/releases/tag/v0.2.4",
+      "body": "notas da versao",
+      "assets": [
+        { "name": "MagoSetup-0.2.4.exe.sha256", "browser_download_url": "https://example.com/sha" },
+        { "name": "MagoSetup-0.2.4.msi", "browser_download_url": "https://example.com/msi" },
+        { "name": "MagoSetup-0.2.4.exe", "browser_download_url": "https://example.com/setup" }
+      ]
+    }
+    """;
+
+    [Fact]
+    public void ParseRelease_le_tag_versao_e_pagina()
+    {
+        var info = Updater.ParseRelease(ReleaseJson);
+        Assert.NotNull(info);
+        Assert.Equal("0.2.4", info!.Version);
+        Assert.Contains("v0.2.4", info.PageUrl);
+        Assert.Equal("notas da versao", info.Notes);
+    }
+
+    [Fact]
+    public void ParseRelease_escolhe_o_exe_do_setup()
+    {
+        var info = Updater.ParseRelease(ReleaseJson);
+        Assert.Equal("https://example.com/setup", info!.InstallerUrl);
+    }
+
+    [Fact]
+    public void ParseRelease_sem_assets_nao_tem_instalador()
+    {
+        var info = Updater.ParseRelease("""{ "tag_name": "v0.3.0", "html_url": "x", "assets": [] }""");
+        Assert.NotNull(info);
+        Assert.Null(info!.InstallerUrl);
+    }
+
+    [Theory]
+    [InlineData("nao-e-versao")]
+    [InlineData("")]
+    public void ParseRelease_sem_tag_valida_devolve_nulo(string tag)
+    {
+        var json = $"{{\"tag_name\":\"{tag}\",\"assets\":[]}}";
+        Assert.Null(Updater.ParseRelease(json));
+    }
+
+    [Theory]
+    [InlineData("0.2.3", "0.2.4", true)]
+    [InlineData("0.2.4", "0.2.4", false)]
+    [InlineData("0.3.0", "0.2.9", false)]
+    [InlineData("0.2.4", "0.2.4.1", true)]
+    public void IsNewer_compara_versoes_normalizadas(string current, string latest, bool expected) =>
+        Assert.Equal(expected, Updater.IsNewer(Version.Parse(current), Version.Parse(latest)));
+
+    [Fact]
+    public void Normalize_iguala_versao_com_e_sem_revisao() =>
+        Assert.Equal(Updater.Normalize(Version.Parse("0.2.4")), Updater.Normalize(Version.Parse("0.2.4.0")));
+}
+
 public class ReportRedactionTests
 {
     [Fact]

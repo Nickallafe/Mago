@@ -20,6 +20,7 @@ public partial class MainWindow : Window
     public HardwareInfo? Hardware { get; private set; }
     public FpsMonitor Fps { get; } = new();
     public FpsOverlay? Overlay { get; private set; }
+    public AppSettings Settings { get; }
 
     public MainWindow()
     {
@@ -35,6 +36,7 @@ public partial class MainWindow : Window
         Directory.CreateDirectory(Paths.DataDir);
         Store = new BackupStore(Paths.BackupFile);
         Engine = new TweakEngine(Store);
+        Settings = AppSettings.Load();
 
         _lblCpu = Ui.Mono("CPU --%", 12, Ui.Green);
         _lblRam = Ui.Mono("RAM --%", 12, Ui.Cyan);
@@ -90,6 +92,7 @@ public partial class MainWindow : Window
                 }
                 catch (Exception ex) { Log.Write(ex.Message, "ERRO"); }
             });
+            StartAutoUpdate();
         };
 
         Closing += (_, _) =>
@@ -309,6 +312,109 @@ public partial class MainWindow : Window
     }
 
     /// <summary>Relê o hardware e volta a verificar os drivers.</summary>
+    private bool _checkingUpdates;
+
+    /// <summary>Verifica e instala a atualizacao logo apos abrir (se estiver ligada).</summary>
+    private void StartAutoUpdate()
+    {
+        if (!Settings.AutoUpdate) return;
+        System.Threading.Tasks.Task.Run(async () =>
+        {
+            await System.Threading.Tasks.Task.Delay(4000);   // deixa a janela assentar
+            CheckForUpdates(silent: true);
+        });
+    }
+
+    /// <summary>Consulta a ultima release; se houver versao nova, descarrega e instala.</summary>
+    public void CheckForUpdates(bool silent)
+    {
+        if (_checkingUpdates) return;
+        _checkingUpdates = true;
+        Status("A procurar atualizacoes...");
+        System.Threading.Tasks.Task.Run(() =>
+        {
+            try
+            {
+                var info = Updater.CheckForUpdate();
+                if (info == null)
+                {
+                    Dispatcher.BeginInvoke(new Action(() =>
+                    {
+                        Status("Pronto.");
+                        if (!silent) Info($"Ja tem a versao mais recente ({Updater.DisplayVersion}).", "Atualizacoes");
+                    }));
+                    return;
+                }
+
+                if (string.IsNullOrEmpty(info.InstallerUrl))
+                {
+                    Log.Write($"Versao {info.Version} sem instalador anexado.", "AVISO");
+                    Dispatcher.BeginInvoke(new Action(() =>
+                    {
+                        Status("Pronto.");
+                        if (!silent) Info($"Nova versao {info.Version}: {info.PageUrl}", "Atualizacoes");
+                    }));
+                    return;
+                }
+
+                if (!Updater.IsInstalledCopy())
+                {
+                    Log.Write($"Versao {info.Version} disponivel; copia portatil nao se atualiza sozinha.", "AVISO");
+                    Dispatcher.BeginInvoke(new Action(() =>
+                    {
+                        Status("Pronto.");
+                        if (!silent) Info($"Nova versao {info.Version} disponivel em\n{info.PageUrl}", "Atualizacoes");
+                    }));
+                    return;
+                }
+
+                if (!silent && !ConfirmOnUi($"Nova versao {info.Version} disponivel. Atualizar agora?", "Atualizacoes"))
+                {
+                    Dispatcher.BeginInvoke(new Action(() => Status("Pronto.")));
+                    return;
+                }
+
+                Dispatcher.BeginInvoke(new Action(() => Status($"A descarregar a versao {info.Version}...")));
+                var installer = Updater.Download(info, message =>
+                {
+                    if (Dispatcher.HasShutdownStarted) return;
+                    Dispatcher.BeginInvoke(new Action(() => Status(message)));
+                });
+
+                Dispatcher.BeginInvoke(new Action(() =>
+                {
+                    Status($"A instalar a versao {info.Version}...");
+                    if (!Updater.InstallAndRestart(installer))
+                    {
+                        Status("Falha ao iniciar a atualizacao.");
+                        if (!silent) Info("Nao foi possivel iniciar o instalador:\n" + installer, "Atualizacoes");
+                        return;
+                    }
+                    Application.Current.Shutdown();
+                }));
+            }
+            catch (Exception ex)
+            {
+                Log.Write("Atualizacao: " + ex.Message, "AVISO");
+                Dispatcher.BeginInvoke(new Action(() =>
+                {
+                    Status(silent ? "Pronto." : "Falha ao verificar atualizacoes.");
+                    if (!silent) Info("Nao foi possivel verificar atualizacoes.\n" + ex.Message, "Atualizacoes");
+                }));
+            }
+            finally
+            {
+                _checkingUpdates = false;
+            }
+        });
+    }
+
+    private bool ConfirmOnUi(string message, string title)
+    {
+        if (Dispatcher.CheckAccess()) return Confirm(message, title);
+        return Dispatcher.Invoke(() => Confirm(message, title));
+    }
+
     public void RefreshHardware()
     {
         RunTask(() =>

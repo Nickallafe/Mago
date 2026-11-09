@@ -8,6 +8,7 @@ public sealed class AppSettings
 {
     [JsonPropertyName("advanced_mode")] public bool AdvancedMode { get; set; }
     [JsonPropertyName("presentmon_path")] public string? PresentMonPath { get; set; }
+    [JsonPropertyName("auto_update")] public bool AutoUpdate { get; set; } = true;
 
     private static readonly JsonSerializerOptions Options = new() { WriteIndented = true };
 

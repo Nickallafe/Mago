@@ -88,6 +88,14 @@ Diagnóstico sem abrir a interface:
 publish\MagoDaPerformance.exe --selfcheck
 ```
 
+## Atualizações
+
+O app consulta a última release do GitHub **a cada arranque**, descarrega o
+`MagoSetup-*.exe`, instala em silêncio e reabre sozinho. A verificação só
+autualiza uma cópia instalada pelo setup (um `.exe` portátil não instala uma
+segunda cópia). Em **Ferramentas → Atualizações** pode desligar a atualização
+automática ou verificar na hora.
+
 ## Testes
 
 Testes das funções puras (parsing de registo, nomes de apps da Store, CSV do
@@ -105,6 +113,7 @@ dotnet test tests\MagoDaPerformance.Tests\MagoDaPerformance.Tests.csproj
 | `MagoSetup.iss` | Script do Inno Setup que gera o instalador. |
 | `build-installer.ps1` | Publica o app e gera o instalador com um comando. |
 | `tests/` | Projeto xUnit com os testes das funções puras. |
+| `MagoDaPerformance/Services/Updater.cs` | Auto-atualização pelo GitHub Releases. |
 | `icon.ico` | Ícone do executável e do instalador. |
 | `icon.png` | Ícone usado na divulgação. |
 

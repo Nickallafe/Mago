@@ -36,7 +36,32 @@ public sealed class ToolsPage : PageBase
         startupBody.Children.Add(_startup);
         startupBody.Children.Add(_startupStatus);
 
+        var updatesCard = Card("ATUALIZACOES", 360);
+        var updatesBody = BodyOf(updatesCard);
+        updatesBody.Children.Add(Ui.Lbl($"Versao atual: {Updater.DisplayVersion}", 11, Ui.Dim));
+        var autoUpdate = new CheckBox
+        {
+            Content = "Atualizar automaticamente ao abrir",
+            IsChecked = Host.Settings.AutoUpdate,
+            Foreground = Ui.Br(Ui.Txt),
+            Margin = new Thickness(0, 2, 0, 8),
+        };
+        autoUpdate.Checked += (_, _) => SetAutoUpdate(true);
+        autoUpdate.Unchecked += (_, _) => SetAutoUpdate(false);
+        updatesBody.Children.Add(autoUpdate);
+        updatesBody.Children.Add(Ui.Wrap(
+            Ui.Btn("Verificar agora", () => Host.CheckForUpdates(silent: false)),
+            Ui.Btn("Abrir releases", () => Proc.OpenUri($"https://github.com/{Updater.Repository}/releases"))));
+
         Add(Row(utils, startupCard));
+        Add(Row(updatesCard));
+    }
+
+    private void SetAutoUpdate(bool enabled)
+    {
+        Host.Settings.AutoUpdate = enabled;
+        Host.Settings.Save();
+        Host.Status(enabled ? "Atualizacao automatica ligada." : "Atualizacao automatica desligada.");
     }
 
     public override void OnShown()

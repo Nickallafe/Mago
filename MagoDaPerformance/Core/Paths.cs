@@ -18,4 +18,5 @@ public static class Paths
     public static string BackupFile => Path.Combine(DataDir, "mago_backup.json");
     public static string SnapshotDir => Path.Combine(DataDir, "mago_snapshots");
     public static string SettingsFile => Path.Combine(DataDir, "mago_settings.json");
+    public static string UpdateDir => Path.Combine(DataDir, "updates");
 }
