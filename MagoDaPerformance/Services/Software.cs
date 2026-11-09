@@ -95,7 +95,10 @@ public static class Software
     internal static string FamilyName(string packageFullName)
     {
         var parts = (packageFullName ?? "").Split('_', StringSplitOptions.RemoveEmptyEntries);
-        return parts.Length >= 5 ? parts[0] + "_" + parts[^1] : parts.FirstOrDefault() ?? "";
+        if (parts.Length == 0) return "";
+        // PackageFullName = Nome_Versao_Arquitetura_[ResourceId]_PublisherId. O ResourceId pode
+        // ser vazio (dois underscores), por isso o total de partes varia entre 4 e 5.
+        return parts.Length >= 3 ? parts[0] + "_" + parts[^1] : parts[0];
     }
 
     public static string PspathToReg(string pspath)

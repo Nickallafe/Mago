@@ -42,7 +42,7 @@ public sealed class OptimizePage : PageBase
             Ui.Btn("Registo multimedia", () => Host.RunTask(() => { Host.Engine.TweakReg(); return null; }, "Registo...")),
             Ui.Btn("Plano de energia", () => Host.RunTask(() => { Host.Engine.TweakPower(); return null; }, "Energia...")),
             Ui.Btn("Servicos", () => Host.RunTask(() => { Host.Engine.TweakServices(); return null; }, "Servicos...")),
-            Ui.Btn("Temp + DNS", () => Host.RunTask(() => { Host.Engine.CleanTempAndRam(); return null; }, "Limpeza...")),
+            Ui.Btn("Temp + DNS", () => Host.RunTask(() => { Host.Engine.CleanTempAndDns(); return null; }, "Limpeza...")),
             Ui.Btn("Rede", () => Host.RunTask(() => { Host.Engine.TweakNetwork(); return null; }, "Rede...")),
             Ui.Btn("Input lag", () => Host.RunTask(() => { Host.Engine.TweakInputLag(); return null; }, "Input lag...")),
             Ui.Btn("SSD", () => Host.RunTask(() => { Host.Engine.TweakSsd(); return null; }, "SSD...")),

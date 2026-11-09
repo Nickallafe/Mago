@@ -39,7 +39,17 @@ public sealed class TouchedFlags
     [JsonPropertyName("tcp_globals")] public bool TcpGlobals { get; set; }
     [JsonPropertyName("trim")] public bool Trim { get; set; }
 
-    public bool Any => DefragTask || MemoryCompression || TcpGlobals || Trim;
+    // Estado original: sem isto o restauro repunha um valor "padrao" em vez do que o PC tinha.
+    [JsonPropertyName("defrag_was_enabled")] public bool? DefragWasEnabled { get; set; }
+    [JsonPropertyName("memory_compression_was_enabled")] public bool? MemoryCompressionWasEnabled { get; set; }
+    [JsonPropertyName("hibernate_was_enabled")] public bool? HibernateWasEnabled { get; set; }
+    [JsonPropertyName("trim_before")] public int? TrimBefore { get; set; }
+
+    /// <summary>Parametros de `netsh int tcp show global` antes de mexer (nome -> valor).</summary>
+    [JsonPropertyName("tcp_before")] public Dictionary<string, string> TcpBefore { get; set; } = new();
+
+    public bool Any => DefragTask || MemoryCompression || TcpGlobals || Trim ||
+                       HibernateWasEnabled == true || TcpBefore.Count > 0 || TrimBefore != null;
 }
 
 public sealed class BackupData

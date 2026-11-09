@@ -48,10 +48,18 @@ public sealed class TweakEngine
 
     // ---------- registo ----------
 
+    /// <summary>Grava logo o backup: um modulo avulso tambem tem de poder ser restaurado.</summary>
+    private void Persist()
+    {
+        try { Backup.Save(); }
+        catch (Exception ex) { Log.Write("Falha ao gravar backup: " + ex.Message, "ERRO"); }
+    }
+
     public RegSnap SnapshotReg(string key, string name, bool overwrite = false)
     {
         var snap = Reg.Snapshot(key, name);
         Backup.RememberReg(key, name, snap, overwrite);
+        Persist();
         return snap;
     }
 
@@ -82,6 +90,7 @@ public sealed class TweakEngine
         var running = okQ && outQ.ToUpperInvariant().Contains("RUNNING");
         var snap = new SvcSnap { Name = name, Start = start, Running = running };
         Backup.RememberService(name, snap, overwrite);
+        Persist();
         return snap;
     }
 
@@ -107,23 +116,117 @@ public sealed class TweakEngine
         return value?.Trim();
     }
 
-    public BcdSnap SnapshotBcd(string name, bool overwrite = false)
+    internal static string? ReadBcdValue(string name)
     {
         var (ok, output) = Proc.Run("bcdedit.exe", "/enum {current}");
+        if (!ok) return null;
         string? value = null;
-        if (ok)
+        foreach (var raw in output.Split('\n'))
         {
-            foreach (var raw in output.Split('\n'))
-            {
-                var line = raw.Trim();
-                if (!line.StartsWith(name, StringComparison.OrdinalIgnoreCase)) continue;
-                var parts = line.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-                if (parts.Length >= 2) value = NormalizeBcdToken(parts[^1]);
-            }
+            var line = raw.Trim();
+            if (!line.StartsWith(name, StringComparison.OrdinalIgnoreCase)) continue;
+            var parts = line.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            if (parts.Length >= 2) value = NormalizeBcdToken(parts[^1]);
         }
+        return value;
+    }
+
+    public BcdSnap SnapshotBcd(string name, bool overwrite = false)
+    {
+        var value = ReadBcdValue(name);
         var snap = new BcdSnap { Existed = value != null, Value = value };
         Backup.RememberBcd(name, snap, overwrite);
+        Persist();
         return snap;
+    }
+
+    /// <summary>
+    /// Grava no BCD e confirma por leitura. O bcdedit mostra Sim/Nao em pt-BR, mas aceita
+    /// os tokens em ingles; sem esta verificacao uma falha ficava invisivel no log.
+    /// </summary>
+    public bool SetBcd(string name, string value, bool snapshot = true)
+    {
+        if (snapshot) SnapshotBcd(name);
+        var (ok, output) = Proc.Run("bcdedit.exe", $"/set {name} {value}");
+        if (!ok)
+        {
+            Log.Write($"bcdedit /set {name} {value} falhou: {output.Trim()}", "ERRO");
+            return false;
+        }
+        var read = ReadBcdValue(name);
+        var expected = NormalizeBcdToken(value);
+        if (!string.Equals(read, expected, StringComparison.OrdinalIgnoreCase))
+            Log.Write($"bcdedit {name}: esperado {expected}, lido {read ?? "ausente"}", "AVISO");
+        return true;
+    }
+
+    // ---------- netsh / tarefas agendadas / hibernacao ----------
+
+    /// <summary>Nome mostrado por `netsh int tcp show global` -> parametro de /set.</summary>
+    internal static readonly Dictionary<string, string> TcpParamNames = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["Receive Window Auto-Tuning Level"] = "autotuninglevel",
+        ["ECN Capability"] = "ecncapability",
+        ["RFC 1323 Timestamps"] = "timestamps",
+        ["Receive-Side Scaling State"] = "rss",
+        ["Receive Segment Coalescing State"] = "rsc",
+        ["Add-On Congestion Control Provider"] = "congestionprovider",
+    };
+
+    internal static Dictionary<string, string> ReadTcpGlobals()
+    {
+        var map = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        var (ok, output) = Proc.Run("netsh.exe", "int tcp show global", 30000);
+        if (!ok) return map;
+        foreach (var raw in output.Split('\n'))
+        {
+            var idx = raw.IndexOf(':');
+            if (idx <= 0) continue;
+            var key = raw[..idx].Trim();
+            var value = raw[(idx + 1)..].Trim();
+            if (key.Length == 0 || value.Length == 0) continue;
+            map[key] = value;
+        }
+        return map;
+    }
+
+    /// <summary>Repoe so os parametros que o Mago altera, com o valor que o PC tinha.</summary>
+    internal static void RestoreTcpGlobals(Dictionary<string, string> before)
+    {
+        foreach (var (display, value) in before)
+        {
+            if (!TcpParamNames.TryGetValue(display, out var param)) continue;
+            var (ok, output) = Proc.Run("netsh.exe", $"int tcp set global {param}={value.Replace(" ", "")}");
+            Log.Write(ok ? $"TCP {param}={value} reposto." : $"TCP {param} falhou: {output.Trim()}", ok ? "INFO" : "AVISO");
+        }
+    }
+
+    private static bool? DefragTaskEnabled()
+    {
+        var (ok, output) = Proc.Run("powershell",
+            "-NoProfile -NonInteractive -Command \"(Get-ScheduledTask -TaskPath '\\Microsoft\\Windows\\Defrag\\' -TaskName 'ScheduledDefrag').State\"",
+            30000);
+        if (!ok) return null;
+        var text = output.Trim();
+        if (text.Equals("Disabled", StringComparison.OrdinalIgnoreCase)) return false;
+        return text.Length > 0 ? true : null;
+    }
+
+    private static bool? MemoryCompressionEnabled()
+    {
+        var (ok, output) = Proc.Run("powershell",
+            "-NoProfile -NonInteractive -Command \"(Get-MMAgent).MemoryCompression\"", 30000);
+        if (!ok) return null;
+        var text = output.Trim();
+        if (text.Equals("True", StringComparison.OrdinalIgnoreCase)) return true;
+        if (text.Equals("False", StringComparison.OrdinalIgnoreCase)) return false;
+        return null;
+    }
+
+    private static bool HibernationOn()
+    {
+        var raw = Reg.ReadString(@"HKLM\SYSTEM\CurrentControlSet\Control\Power", "HibernateEnabled");
+        return raw == null || raw.Trim() != "0";
     }
 
     public string? CurrentPowerGuid()
@@ -180,8 +283,11 @@ public sealed class TweakEngine
 
         SetReg(@"HKLM\SYSTEM\CurrentControlSet\Control\DeviceGuard", "EnableVirtualizationBasedSecurity", "REG_DWORD", "0");
         SetReg(@"HKLM\SYSTEM\CurrentControlSet\Control\DeviceGuard\Scenarios\HypervisorEnforcedCodeIntegrity", "Enabled", "REG_DWORD", "0");
+        if (Backup.Data.Touched.MemoryCompressionWasEnabled == null)
+            Backup.Data.Touched.MemoryCompressionWasEnabled = MemoryCompressionEnabled();
         var (ok, output) = Proc.Run("powershell", "-NoProfile -NonInteractive -Command \"Disable-MMAgent -MemoryCompression\"");
         if (ok) Backup.Data.Touched.MemoryCompression = true;
+        Persist();
         Log.Write(ok ? "Compressao de memoria off" : "Falha MMAgent: " + output, ok ? "INFO" : "AVISO");
     }
 
@@ -202,35 +308,61 @@ public sealed class TweakEngine
     public void TweakPower()
     {
         Backup.RememberPower(CurrentPowerGuid());
+        Persist();
         // -duplicatescheme devolve um GUID novo; o GUID do template nao serve para -setactive.
         var (_, dupOut) = Proc.Run("powercfg.exe", "-duplicatescheme " + UltimateGuid);
         var duplicated = GuidPattern.Match(dupOut);
         var target = duplicated.Success ? duplicated.Value : UltimateGuid;
 
+        // O nome do esquema e traduzido ("Desempenho maximo" em pt-BR), por isso nunca
+        // comparamos com um literal: usamos o nome que o proprio powercfg devolveu.
+        var nameMatch = System.Text.RegularExpressions.Regex.Match(dupOut, @"\(([^)]+)\)\s*$");
+        var templateName = nameMatch.Success ? nameMatch.Groups[1].Value.Trim() : "";
+
         // Reaproveita um esquema com o mesmo nome para nao acumular duplicados a cada utilizacao.
-        if (duplicated.Success)
+        if (duplicated.Success && templateName.Length > 0)
         {
-            var nameMatch = System.Text.RegularExpressions.Regex.Match(dupOut, @"\(([^)]+)\)\s*$");
-            var duplicateName = nameMatch.Success ? nameMatch.Groups[1].Value.Trim() : "";
-            if (duplicateName.Length > 0)
+            var (_, list) = Proc.Run("powercfg.exe", "-list");
+            foreach (var line in list.Split('\n'))
             {
-                var (_, list) = Proc.Run("powercfg.exe", "-list");
-                foreach (var line in list.Split('\n'))
-                {
-                    if (!line.Contains(duplicateName, StringComparison.OrdinalIgnoreCase)) continue;
-                    var existing = GuidPattern.Match(line);
-                    if (!existing.Success || existing.Value.Equals(target, StringComparison.OrdinalIgnoreCase)) continue;
-                    Proc.Run("powercfg.exe", "-delete " + target);
-                    target = existing.Value;
-                    Log.Write("Esquema de energia existente reaproveitado.");
-                    break;
-                }
+                if (!line.Contains(templateName, StringComparison.OrdinalIgnoreCase)) continue;
+                var existing = GuidPattern.Match(line);
+                if (!existing.Success || existing.Value.Equals(target, StringComparison.OrdinalIgnoreCase)) continue;
+                Proc.Run("powercfg.exe", "-delete " + target);
+                target = existing.Value;
+                Log.Write("Esquema de energia existente reaproveitado.");
+                break;
             }
         }
 
         var (ok, output) = Proc.Run("powercfg.exe", "-setactive " + target);
-        Log.Write(ok ? "Ultimate Performance ativo (" + target + ")" : "Falha no plano de energia: " + output,
+        Log.Write(ok ? "Plano de energia ativo (" + target + ")" : "Falha no plano de energia: " + output,
             ok ? "INFO" : "AVISO");
+        if (ok && templateName.Length > 0) CleanDuplicatePowerSchemes(target, templateName);
+    }
+
+    /// <summary>Mantem um unico esquema do template e apaga os duplicados que se acumularam.</summary>
+    private int CleanDuplicatePowerSchemes(string keepGuid, string templateName)
+    {
+        var (ok, list) = Proc.Run("powercfg.exe", "-list");
+        if (!ok) return 0;
+        var active = CurrentPowerGuid() ?? "";
+        var removed = 0;
+        foreach (var line in list.Split('\n'))
+        {
+            if (!line.Contains(templateName, StringComparison.OrdinalIgnoreCase)) continue;
+            var match = GuidPattern.Match(line);
+            if (!match.Success) continue;
+            var guid = match.Value;
+            if (guid.Equals(keepGuid, StringComparison.OrdinalIgnoreCase)) continue;
+            if (guid.Equals(active, StringComparison.OrdinalIgnoreCase)) continue;
+            if (guid.Equals(Backup.Data.PowerScheme, StringComparison.OrdinalIgnoreCase)) continue;
+            if (!Proc.Run("powercfg.exe", "-delete " + guid).Ok) continue;
+            removed++;
+            Log.Write("Esquema de energia duplicado removido: " + guid);
+        }
+        if (removed > 0) Log.Write($"{removed} esquema(s) duplicado(s) de {templateName} removido(s).");
+        return removed;
     }
 
     public void TweakServices()
@@ -248,7 +380,8 @@ public sealed class TweakEngine
         foreach (var svc in targets) DisableService(svc);
     }
 
-    public void CleanTempAndRam()
+    /// <summary>Limpa ficheiros temporarios e a cache DNS. Nao liberta RAM.</summary>
+    public void CleanTempAndDns()
     {
         var windir = Environment.GetFolderPath(Environment.SpecialFolder.Windows);
         var folders = new[]
@@ -277,6 +410,9 @@ public sealed class TweakEngine
     {
         SetReg(@"HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile",
             "NetworkThrottlingIndex", "REG_DWORD", "4294967295");
+        // Guarda os valores reais: o restauro nao pode adivinhar o que era "padrao" neste PC.
+        if (Backup.Data.Touched.TcpBefore.Count == 0)
+            Backup.Data.Touched.TcpBefore = ReadTcpGlobals();
         Proc.Run("netsh.exe", "int tcp set global autotuninglevel=normal");
         if (Competitive)
         {
@@ -295,25 +431,33 @@ public sealed class TweakEngine
         SetReg(@"HKCU\Control Panel\Mouse", "MouseThreshold2", "REG_SZ", "0");
         if (!Competitive) return;
 
-        SnapshotBcd("disabledynamictick");
-        SnapshotBcd("useplatformclock");
-        Proc.Run("bcdedit.exe", "/set disabledynamictick yes");
-        Proc.Run("bcdedit.exe", "/set useplatformclock false");
+        SetBcd("disabledynamictick", "yes");
+        SetBcd("useplatformclock", "no");
         Log.Write("bcdedit aplicado.", "AVISO");
     }
 
     public void TweakSsd()
     {
+        if (Backup.Data.Touched.TrimBefore == null &&
+            int.TryParse(Reg.ReadString(@"HKLM\SYSTEM\CurrentControlSet\Control\FileSystem", "DisableDeleteNotify"),
+                out var trimBefore))
+            Backup.Data.Touched.TrimBefore = trimBefore;
         Proc.Run("fsutil.exe", "behavior set DisableDeleteNotify 0");
         // Desativar a desfragmentacao agendada so faz sentido em SSD; em HDD e util.
         if (HasHdd)
             Log.Write("HDD detetado: desfragmentacao agendada mantida.", "AVISO");
         else
+        {
+            if (Backup.Data.Touched.DefragWasEnabled == null)
+                Backup.Data.Touched.DefragWasEnabled = DefragTaskEnabled();
             Proc.Run("schtasks.exe", "/change /tn \"\\Microsoft\\Windows\\Defrag\\ScheduledDefrag\" /disable");
+        }
         if (Competitive)
         {
             SetReg(@"HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management\PrefetchParameters",
                 "EnablePrefetcher", "REG_DWORD", "0");
+            if (Backup.Data.Touched.HibernateWasEnabled == null)
+                Backup.Data.Touched.HibernateWasEnabled = HibernationOn();
             Proc.Run("powercfg.exe", "-h off");
         }
         Backup.Data.Touched.Trim = true;
@@ -348,7 +492,7 @@ public sealed class TweakEngine
             Step("Registo multimedia", TweakReg);
             Step("Plano de energia", TweakPower);
             Step("Servicos", TweakServices);
-            Step("Temp e DNS", CleanTempAndRam);
+            Step("Temp e DNS", CleanTempAndDns);
             Step("Rede", TweakNetwork);
             Step("Input lag", TweakInputLag);
             Step("SSD", TweakSsd);
@@ -375,36 +519,58 @@ public sealed class TweakEngine
             foreach (var (name, snap) in Backup.Data.Bcd)
             {
                 if (snap.Existed && !string.IsNullOrEmpty(snap.Value))
-                    Proc.Run("bcdedit.exe", $"/set {name} {snap.Value}");
+                    SetBcd(name, snap.Value, snapshot: false);
                 else
                     Proc.Run("bcdedit.exe", "/deletevalue " + name);
             }
             if (!string.IsNullOrEmpty(Backup.Data.PowerScheme))
                 Proc.Run("powercfg.exe", "-setactive " + Backup.Data.PowerScheme);
 
-            // Alteracoes que nao cabem num valor de registo: repor o comportamento padrao.
+            // Alteracoes que nao cabem num valor de registo: repor o estado guardado.
             var touched = Backup.Data.Touched;
             if (touched.DefragTask)
             {
-                Proc.Run("schtasks.exe", "/change /tn \"\\Microsoft\\Windows\\Defrag\\ScheduledDefrag\" /enable");
-                Log.Write("Desfragmentacao agendada reativada.");
+                if (touched.DefragWasEnabled == false)
+                {
+                    Proc.Run("schtasks.exe", "/change /tn \"\\Microsoft\\Windows\\Defrag\\ScheduledDefrag\" /disable");
+                    Log.Write("Desfragmentacao agendada mantida desligada (estava assim antes).");
+                }
+                else
+                {
+                    Proc.Run("schtasks.exe", "/change /tn \"\\Microsoft\\Windows\\Defrag\\ScheduledDefrag\" /enable");
+                    Log.Write("Desfragmentacao agendada reativada.");
+                }
             }
             if (touched.MemoryCompression)
             {
-                Proc.Run("powershell", "-NoProfile -NonInteractive -Command \"Enable-MMAgent -MemoryCompression\"");
-                Log.Write("Compressao de memoria reativada.");
+                if (touched.MemoryCompressionWasEnabled != false)
+                {
+                    Proc.Run("powershell", "-NoProfile -NonInteractive -Command \"Enable-MMAgent -MemoryCompression\"");
+                    Log.Write("Compressao de memoria reativada.");
+                }
+                else Log.Write("Compressao de memoria ja estava desligada: mantida.");
+            }
+            if (touched.HibernateWasEnabled == true)
+            {
+                Proc.Run("powercfg.exe", "-h on");
+                Log.Write("Hibernacao reativada.");
             }
             if (touched.TcpGlobals)
             {
-                Proc.Run("netsh.exe", "int tcp set global autotuninglevel=normal");
-                Proc.Run("netsh.exe", "int tcp set global ecncapability=disabled");
-                Proc.Run("netsh.exe", "int tcp set global timestamps=disabled");
-                Log.Write("Parametros TCP repostos.");
+                if (touched.TcpBefore.Count > 0) RestoreTcpGlobals(touched.TcpBefore);
+                else
+                {
+                    Proc.Run("netsh.exe", "int tcp set global autotuninglevel=normal");
+                    Proc.Run("netsh.exe", "int tcp set global ecncapability=disabled");
+                    Proc.Run("netsh.exe", "int tcp set global timestamps=disabled");
+                    Log.Write("Parametros TCP repostos.");
+                }
             }
             if (touched.Trim)
             {
-                Proc.Run("fsutil.exe", "behavior set DisableDeleteNotify 0");
-                Log.Write("TRIM reativado.");
+                var target = touched.TrimBefore ?? 0;
+                Proc.Run("fsutil.exe", $"behavior set DisableDeleteNotify {target}");
+                Log.Write(target == 0 ? "TRIM reativado." : "TRIM reposto no estado original (desativado).");
             }
             Backup.Data.Touched = new TouchedFlags();
             Backup.Save();

@@ -35,6 +35,8 @@ public static class Program
 
         try
         {
+            // O filho elevado vai verificar o mutex; se o pai ainda o tiver, ele recusa abrir.
+            if (!Proc.IsAdmin()) ReleaseSingleInstance();
             Proc.EnsureAdminOrExit();
         }
         catch (Exception ex)
@@ -74,6 +76,14 @@ public static class Program
         {
             return true; // sem mutex: nao vale a pena bloquear o arranque
         }
+    }
+
+    /// <summary>Liberta o mutex antes de entregar o arranque a copia elevada.</summary>
+    private static void ReleaseSingleInstance()
+    {
+        try { _singleInstance?.ReleaseMutex(); } catch { }
+        try { _singleInstance?.Dispose(); } catch { }
+        _singleInstance = null;
     }
 
     private static void FocusExisting()
