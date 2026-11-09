@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<!--
+  Artifact configuration "app-exe" (SignPath > projeto > Artifact Configurations).
+  Entrada: o zip app-unsigned.zip produzido pelo workflow, com MagoDaPerformance.exe na raiz.
+  Se o SignPath exigir restricoes de metadados na sua conta, use "Add metadata restrictions"
+  na interface e mantenha ProductName = "Mago da Performance" e CompanyName = "Ribanense Solucoes".
+-->
+<artifact-configuration xmlns="http://signpath.io/artifact-configuration/v1">
+  <zip-file>
+    <pe-file path="MagoDaPerformance.exe" product-name="Mago da Performance" company-name="Ribanense Solucoes">
+      <authenticode-sign />
+    </pe-file>
+  </zip-file>
+</artifact-configuration>

@@ -1,0 +1,152 @@
+name: Release assinada (SignPath)
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Versao sem o v (ex.: 0.2.7)"
+        required: true
+
+permissions:
+  contents: write
+  actions: read
+
+env:
+  # Slugs definidos em signpath.io (Organization > Project > Signing policy / Artifact configuration).
+  SIGNPATH_PROJECT_SLUG: mago-da-performance
+  SIGNPATH_POLICY_SLUG: release-signing
+  SIGNPATH_APP_CONFIG: app-exe
+  SIGNPATH_INSTALLER_CONFIG: installer-exe
+  # Vem de Settings > Secrets and variables > Actions (vazio = release sem assinatura).
+  SIGNPATH_API_TOKEN: ${{ secrets.SIGNPATH_API_TOKEN }}
+  SIGNPATH_ORG_ID: ${{ secrets.SIGNPATH_ORG_ID }}
+
+jobs:
+  release:
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Definir versao
+        shell: pwsh
+        run: |
+          $version = if ("${{ github.event_name }}" -eq "workflow_dispatch") {
+            "${{ inputs.version }}"
+          } else {
+            "${{ github.ref_name }}".TrimStart('v', 'V')
+          }
+          if ([string]::IsNullOrWhiteSpace($version)) { throw "versao vazia" }
+          "VERSION=$version" >> $env:GITHUB_ENV
+          Write-Host "Versao: $version"
+
+      - name: Testes
+        run: dotnet test tests/MagoDaPerformance.Tests/MagoDaPerformance.Tests.csproj -c Release
+
+      - name: Publicar executavel
+        run: >
+          dotnet publish MagoDaPerformance/MagoDaPerformance.csproj -c Release -r win-x64
+          --self-contained true -p:PublishSingleFile=true -p:EnableCompressionInSingleFile=true
+          -p:IncludeNativeLibrariesForSelfExtract=true -p:Version=${{ env.VERSION }} -o publish
+
+      - name: Empacotar exe para assinatura
+        shell: pwsh
+        run: Compress-Archive -Path publish/MagoDaPerformance.exe -DestinationPath app-unsigned.zip -Force
+
+      - name: Upload do exe
+        id: app-unsigned
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-unsigned
+          path: app-unsigned.zip
+          if-no-files-found: error
+
+      - name: Assinar executavel (SignPath)
+        id: sign-app
+        if: ${{ env.SIGNPATH_API_TOKEN != '' && env.SIGNPATH_ORG_ID != '' }}
+        uses: signpath/github-action-submit-signing-request@v1
+        with:
+          api-token: ${{ env.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ env.SIGNPATH_ORG_ID }}
+          project-slug: ${{ env.SIGNPATH_PROJECT_SLUG }}
+          signing-policy-slug: ${{ env.SIGNPATH_POLICY_SLUG }}
+          artifact-configuration-slug: ${{ env.SIGNPATH_APP_CONFIG }}
+          github-artifact-id: ${{ steps.app-unsigned.outputs.artifact-id }}
+          wait-for-completion: true
+          output-artifact-directory: signed-app
+
+      - name: Usar executavel assinado
+        if: ${{ steps.sign-app.outcome == 'success' }}
+        shell: pwsh
+        run: Copy-Item signed-app/MagoDaPerformance.exe publish/MagoDaPerformance.exe -Force
+
+      - name: Instalar Inno Setup
+        run: choco install innosetup --no-progress -y
+
+      - name: Gerar instalador
+        shell: pwsh
+        run: |
+          & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" `
+            "/DMyVersion=$env:VERSION" "/DMySourceDir=publish" "/DMyOutputDir=dist" MagoSetup.iss
+          if (-not (Test-Path "dist/MagoSetup-$env:VERSION.exe")) { throw "instalador nao gerado" }
+
+      - name: Upload do instalador
+        id: setup-unsigned
+        uses: actions/upload-artifact@v4
+        with:
+          name: setup-unsigned
+          path: dist/MagoSetup-${{ env.VERSION }}.exe
+          if-no-files-found: error
+
+      - name: Assinar instalador (SignPath)
+        id: sign-setup
+        if: ${{ env.SIGNPATH_API_TOKEN != '' && env.SIGNPATH_ORG_ID != '' }}
+        uses: signpath/github-action-submit-signing-request@v1
+        with:
+          api-token: ${{ env.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ env.SIGNPATH_ORG_ID }}
+          project-slug: ${{ env.SIGNPATH_PROJECT_SLUG }}
+          signing-policy-slug: ${{ env.SIGNPATH_POLICY_SLUG }}
+          artifact-configuration-slug: ${{ env.SIGNPATH_INSTALLER_CONFIG }}
+          github-artifact-id: ${{ steps.setup-unsigned.outputs.artifact-id }}
+          wait-for-completion: true
+          output-artifact-directory: dist
+
+      - name: Verificar assinatura
+        if: ${{ steps.sign-setup.outcome == 'success' }}
+        shell: pwsh
+        run: |
+          $file = "dist/MagoSetup-$env:VERSION.exe"
+          $signature = Get-AuthenticodeSignature $file
+          Write-Host "Estado: $($signature.Status) | Editor: $($signature.SignerCertificate.Subject)"
+          if ($signature.Status -ne 'Valid') { throw "assinatura invalida: $($signature.Status)" }
+
+      - name: Calcular SHA256
+        shell: pwsh
+        run: |
+          $file = "dist/MagoSetup-$env:VERSION.exe"
+          $hash = (Get-FileHash $file -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$hash  MagoSetup-$env:VERSION.exe" | Set-Content "$file.sha256" -Encoding ascii
+          Get-Content "$file.sha256"
+
+      - name: Publicar release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $tag = "v$env:VERSION"
+          $file = "dist/MagoSetup-$env:VERSION.exe"
+          $hash = (Get-FileHash $file -Algorithm SHA256).Hash.ToLowerInvariant()
+          $notes = @"
+          Instalador self-contained (nao precisa de .NET).
+
+          - Politica de assinatura de codigo: https://github.com/Nickallafe/Mago#assinatura-de-código-code-signing-policy
+          - SHA256: $hash
+          "@
+          gh release create $tag $file "$file.sha256" --title "Mago da Performance $env:VERSION" --notes $notes --target "${{ github.sha }}"

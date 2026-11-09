@@ -96,6 +96,21 @@ autualiza uma cópia instalada pelo setup (um `.exe` portátil não instala uma
 segunda cópia). Em **Ferramentas → Atualizações** pode desligar a atualização
 automática ou verificar na hora.
 
+## Assinatura de código (Code signing policy)
+
+A assinatura de código gratuita é fornecida pelo **SignPath.io**, com certificado
+emitido pelo **SignPath Foundation**. A política completa e o passo a passo de
+configuração estão em [`docs/CODE_SIGNING.md`](docs/CODE_SIGNING.md).
+
+- **O que é assinado:** `MagoDaPerformance.exe` e o instalador `MagoSetup-*.exe`,
+  gerados pelo workflow `.github/workflows/release.yml` a partir de tags `v*`.
+- **Commits e revisões:** [histórico de commits](https://github.com/Nickallafe/Mago/commits/main)
+  e [contribuidores](https://github.com/Nickallafe/Mago/graphs/contributors).
+- **Aprovações:** [Nickallafe](https://github.com/Nickallafe) (proprietário do repositório).
+- **Privacidade:** [política do SignPath](https://signpath.org/privacy-policy).
+- **Verificar:** `Get-AuthenticodeSignature .\MagoSetup-0.2.7.exe` deve retornar
+  `Status: Valid` com editor *SignPath Foundation*.
+
 ## Testes
 
 Testes das funções puras (parsing de registo, nomes de apps da Store, CSV do
@@ -114,6 +129,10 @@ dotnet test tests\MagoDaPerformance.Tests\MagoDaPerformance.Tests.csproj
 | `build-installer.ps1` | Publica o app e gera o instalador com um comando. |
 | `tests/` | Projeto xUnit com os testes das funções puras. |
 | `MagoDaPerformance/Services/Updater.cs` | Auto-atualização pelo GitHub Releases. |
+| `.github/workflows/release.yml` | Release assinada: testes, build, SignPath e publicação. |
+| `signpath/` | Artifact configurations usadas pelo SignPath. |
+| `docs/CODE_SIGNING.md` | Como obter e configurar a assinatura gratuita. |
+| `LICENSE` | Licença MIT (exigência do SignPath Foundation). |
 | `icon.ico` | Ícone do executável e do instalador. |
 | `icon.png` | Ícone usado na divulgação. |
 

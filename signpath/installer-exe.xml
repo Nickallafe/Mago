@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<!--
+  Artifact configuration "installer-exe" (SignPath > projeto > Artifact Configurations).
+  Entrada: o zip setup-unsigned produzido pelo workflow, com MagoSetup-<versao>.exe na raiz.
+  Assina o PE do instalador Inno Setup. O desinstalador (unins000.exe) e gerado pelo ISCC
+  em tempo de compilacao e nao entra neste pedido de assinatura.
+-->
+<artifact-configuration xmlns="http://signpath.io/artifact-configuration/v1">
+  <zip-file>
+    <pe-file path="MagoSetup-*.exe" product-name="Mago da Performance" company-name="Ribanense Solucoes">
+      <authenticode-sign />
+    </pe-file>
+  </zip-file>
+</artifact-configuration>
