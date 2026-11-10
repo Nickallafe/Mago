@@ -324,4 +324,29 @@ public class AppSettingsTests : IDisposable
         // O reset mexe so' no overlay: o resto das preferencias fica como estava.
         Assert.True(loaded.AdvancedMode);
     }
+
+    [Fact]
+    public void Load_com_json_corrompido_volta_aos_padroes_e_avisa_no_log()
+    {
+        var log = Path.Combine(_dir, "mago_log.txt");
+        File.WriteAllText(_file, "{ isto nao e' um mago_settings.json valido");
+
+        // Sem isto o teste escrevia no log real em %LOCALAPPDATA%\MagoDaPerformance.
+        var previous = Log.FileOverride;
+        Log.FileOverride = log;
+        try
+        {
+            var loaded = AppSettings.Load(_file);
+
+            Assert.Equal(0.82, loaded.OverlayOpacity, 3);
+            Assert.Equal(22, loaded.OverlayFontSize, 3);
+            Assert.Contains("Preferencias ilegiveis", File.ReadAllText(log));
+            // O ficheiro corrompido fica substituido por um valido com os padroes.
+            Assert.Contains("overlay_opacity", File.ReadAllText(_file));
+        }
+        finally
+        {
+            Log.FileOverride = previous;
+        }
+    }
 }
