@@ -18,13 +18,15 @@ public sealed class FpsOverlay : Window
     private const double Edge = 24;
 
     private readonly TextBlock _text;
+    private readonly AppSettings _settings;
 
     // Ancorado ao canto superior direito: o badge nao "anda" quando o FPS muda de largura.
     private bool _anchoredRight = true;
     private double _rightEdge = double.NaN;
 
-    public FpsOverlay()
+    public FpsOverlay(AppSettings settings)
     {
+        _settings = settings;
         WindowStyle = WindowStyle.None;
         AllowsTransparency = true;
         Background = Brushes.Transparent;
@@ -77,7 +79,37 @@ public sealed class FpsOverlay : Window
     protected override void OnContentRendered(EventArgs e)
     {
         base.OnContentRendered(e);
-        if (double.IsNaN(_rightEdge)) PlaceOnCursorScreen();
+        if (!double.IsNaN(_rightEdge)) return;
+
+        // Retoma a posicao da ultima sessao; se o monitor desapareceu, encaixa no ecra atual.
+        if (RestoreSavedPosition()) KeepInsideScreen();
+        else PlaceOnCursorScreen();
+    }
+
+    protected override void OnClosed(EventArgs e)
+    {
+        base.OnClosed(e);
+        SavePosition();
+    }
+
+    private bool RestoreSavedPosition()
+    {
+        if (_settings.OverlayLeft is not { } left || _settings.OverlayTop is not { } top) return false;
+        if (double.IsNaN(left) || double.IsNaN(top) || double.IsInfinity(left) || double.IsInfinity(top)) return false;
+
+        _anchoredRight = false;
+        Left = left;
+        Top = top;
+        return true;
+    }
+
+    private void SavePosition()
+    {
+        if (double.IsNaN(Left) || double.IsNaN(Top)) return;
+
+        _settings.OverlayLeft = Left;
+        _settings.OverlayTop = Top;
+        _settings.Save();
     }
 
     /// <summary>Duplo clique (ou primeira abertura) reposiciona no ecra onde esta' o rato.</summary>
@@ -111,6 +143,7 @@ public sealed class FpsOverlay : Window
         if (e.ClickCount == 2)
         {
             PlaceOnCursorScreen();
+            SavePosition();
             return;
         }
         if (e.ButtonState != MouseButtonState.Pressed) return;
@@ -118,6 +151,7 @@ public sealed class FpsOverlay : Window
         DragMove(); // bloqueia ate' soltar o botao
         _anchoredRight = false; // posicao escolhida pelo utilizador
         KeepInsideScreen();
+        SavePosition(); // grava logo, mesmo que a app seja fechada a forca depois
     }
 
     private void OnOverlaySizeChanged(object sender, SizeChangedEventArgs e)

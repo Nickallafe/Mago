@@ -10,6 +10,10 @@ public sealed class AppSettings
     [JsonPropertyName("presentmon_path")] public string? PresentMonPath { get; set; }
     [JsonPropertyName("auto_update")] public bool AutoUpdate { get; set; } = true;
 
+    // Ultima posicao do overlay de FPS, em DIPs. Nulo = ainda nunca foi posicionado.
+    [JsonPropertyName("overlay_left")] public double? OverlayLeft { get; set; }
+    [JsonPropertyName("overlay_top")] public double? OverlayTop { get; set; }
+
     private static readonly JsonSerializerOptions Options = new() { WriteIndented = true };
 
     public static AppSettings Load()

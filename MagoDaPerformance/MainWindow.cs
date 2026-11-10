@@ -448,7 +448,7 @@ public partial class MainWindow : Window
     {
         if (show)
         {
-            Overlay ??= new FpsOverlay();
+            Overlay ??= new FpsOverlay(Settings);
             Overlay.Show();
         }
         else
