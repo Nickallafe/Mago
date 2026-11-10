@@ -46,6 +46,35 @@ public sealed class TweakEngine
     public bool NvidiaPresent => GpuName.Contains("nvidia", StringComparison.OrdinalIgnoreCase);
     public bool HasHdd => DiskTypes.Any(t => t.Equals("HDD", StringComparison.OrdinalIgnoreCase));
 
+    // ---------- alteracoes por modulo (desfazer individual) ----------
+
+    private string? _module;
+
+    private sealed class ModuleScope(TweakEngine engine, string? previous) : IDisposable
+    {
+        public void Dispose() => engine._module = previous;
+    }
+
+    /// <summary>Tudo o que for alterado dentro do scope fica associado ao modulo.</summary>
+    private IDisposable UseModule(string name)
+    {
+        var previous = _module;
+        _module = name;
+        return new ModuleScope(this, previous);
+    }
+
+    private void Track(string token)
+    {
+        if (_module == null) return;
+        if (!Backup.Data.Modules.TryGetValue(_module, out var list))
+            Backup.Data.Modules[_module] = list = new List<string>();
+        if (!list.Contains(token)) list.Add(token);
+    }
+
+    /// <summary>Modulos com alteracoes guardadas, para a UI oferecer desfazer individual.</summary>
+    public List<string> AppliedModules() =>
+        Backup.Data.Modules.Where(m => m.Value.Count > 0).Select(m => m.Key).OrderBy(m => m).ToList();
+
     // ---------- registo ----------
 
     /// <summary>Grava logo o backup: um modulo avulso tambem tem de poder ser restaurado.</summary>
@@ -66,6 +95,7 @@ public sealed class TweakEngine
     public bool SetReg(string key, string name, string type, string data)
     {
         SnapshotReg(key, name);
+        Track("reg::" + key + "::" + name);
         var ok = Reg.Write(key, name, type, data);
         Log.Write(ok ? $"[OK] Registo {name}={data}" : $"[FALHA] Registo {name}", ok ? "INFO" : "ERRO");
         return ok;
@@ -97,6 +127,7 @@ public sealed class TweakEngine
     public bool DisableService(string name)
     {
         SnapshotService(name);
+        Track("svc::" + name.ToLowerInvariant());
         var (okCfg, outCfg) = Proc.Run("sc.exe", "config \"" + name + "\" start= disabled");
         var (_, outStop) = Proc.Run("sc.exe", "stop \"" + name + "\"");
         Log.Write(okCfg ? $"[OK] Servico {name} desativado" : $"[FALHA] Servico {name}", okCfg ? "INFO" : "ERRO");
@@ -146,7 +177,11 @@ public sealed class TweakEngine
     /// </summary>
     public bool SetBcd(string name, string value, bool snapshot = true)
     {
-        if (snapshot) SnapshotBcd(name);
+        if (snapshot)
+        {
+            SnapshotBcd(name);
+            Track("bcd::" + name);
+        }
         var (ok, output) = Proc.Run("bcdedit.exe", $"/set {name} {value}");
         if (!ok)
         {
@@ -261,6 +296,7 @@ public sealed class TweakEngine
 
     public void TweakGpu()
     {
+        using var _ = UseModule("GPU");
         Log.Write("GPU: HAGS...");
         SetReg(@"HKLM\SYSTEM\CurrentControlSet\Control\GraphicsDrivers", "HwSchMode", "REG_DWORD", "2");
         if (Competitive)
@@ -279,6 +315,7 @@ public sealed class TweakEngine
 
     public void TweakWindowsGaming()
     {
+        using var _ = UseModule("Windows Gaming");
         SetReg(@"HKLM\SYSTEM\CurrentControlSet\Control\PriorityControl", "Win32PrioritySeparation", "REG_DWORD", "26");
         SetReg(@"HKCU\Software\Microsoft\GameBar", "AutoGameModeEnabled", "REG_DWORD", "1");
         SetReg(@"HKCU\Software\Microsoft\GameBar", "AllowAutoGameMode", "REG_DWORD", "1");
@@ -290,6 +327,7 @@ public sealed class TweakEngine
         SetReg(@"HKLM\SYSTEM\CurrentControlSet\Control\DeviceGuard\Scenarios\HypervisorEnforcedCodeIntegrity", "Enabled", "REG_DWORD", "0");
         if (Backup.Data.Touched.MemoryCompressionWasEnabled == null)
             Backup.Data.Touched.MemoryCompressionWasEnabled = MemoryCompressionEnabled();
+        Track("flag::memorycompression");
         var (ok, output) = Proc.Run("powershell", "-NoProfile -NonInteractive -Command \"Disable-MMAgent -MemoryCompression\"");
         if (ok) Backup.Data.Touched.MemoryCompression = true;
         Persist();
@@ -298,6 +336,7 @@ public sealed class TweakEngine
 
     public void TweakReg()
     {
+        using var _ = UseModule("Registo multimidia");
         SetReg(@"HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile", "SystemResponsiveness", "REG_DWORD", "0");
         const string games = @"HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile\Tasks\Games";
         SetReg(games, "GPU Priority", "REG_DWORD", "8");
@@ -312,7 +351,9 @@ public sealed class TweakEngine
 
     public void TweakPower()
     {
+        using var _ = UseModule("Plano de energia");
         Backup.RememberPower(CurrentPowerGuid());
+        Track("power");
         Persist();
         // -duplicatescheme devolve um GUID novo; o GUID do template nao serve para -setactive.
         var (_, dupOut) = Proc.Run("powercfg.exe", "-duplicatescheme " + UltimateGuid);
@@ -372,6 +413,7 @@ public sealed class TweakEngine
 
     public void TweakServices()
     {
+        using var _ = UseModule("Servicos");
         var targets = new List<string> { "DiagTrack", "dmwappushservice", "MapsBroker", "lfsvc" };
         if (Competitive && !HasHdd)
         {
@@ -441,6 +483,7 @@ public sealed class TweakEngine
 
     public void TweakNetwork()
     {
+        using var _ = UseModule("Rede");
         SetReg(@"HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile",
             "NetworkThrottlingIndex", "REG_DWORD", "4294967295");
         // Guarda os valores reais: o restauro nao pode adivinhar o que era "padrao" neste PC.
@@ -453,12 +496,14 @@ public sealed class TweakEngine
             Proc.Run("netsh.exe", "int tcp set global timestamps=disabled");
         }
         Backup.Data.Touched.TcpGlobals = true;
+        Track("flag::tcp");
         Backup.Save();
         Log.Write("Rede: modulo concluido.");
     }
 
     public void TweakInputLag()
     {
+        using var _ = UseModule("Input lag");
         SetReg(@"HKCU\Control Panel\Mouse", "MouseSpeed", "REG_SZ", "0");
         SetReg(@"HKCU\Control Panel\Mouse", "MouseThreshold1", "REG_SZ", "0");
         SetReg(@"HKCU\Control Panel\Mouse", "MouseThreshold2", "REG_SZ", "0");
@@ -471,6 +516,7 @@ public sealed class TweakEngine
 
     public void TweakSsd()
     {
+        using var _ = UseModule("SSD");
         if (Backup.Data.Touched.TrimBefore == null &&
             int.TryParse(Reg.ReadString(@"HKLM\SYSTEM\CurrentControlSet\Control\FileSystem", "DisableDeleteNotify"),
                 out var trimBefore))
@@ -484,6 +530,7 @@ public sealed class TweakEngine
             if (Backup.Data.Touched.DefragWasEnabled == null)
                 Backup.Data.Touched.DefragWasEnabled = DefragTaskEnabled();
             Proc.Run("schtasks.exe", "/change /tn \"\\Microsoft\\Windows\\Defrag\\ScheduledDefrag\" /disable");
+            Track("flag::defrag");
         }
         if (Competitive)
         {
@@ -497,9 +544,11 @@ public sealed class TweakEngine
                 if (Backup.Data.Touched.HibernateWasEnabled == null)
                     Backup.Data.Touched.HibernateWasEnabled = HibernationOn();
                 Proc.Run("powercfg.exe", "-h off");
+                Track("flag::hibernate");
             }
         }
         Backup.Data.Touched.Trim = true;
+        Track("flag::trim");
         if (!HasHdd) Backup.Data.Touched.DefragTask = true;
         Backup.Save();
         Log.Write("SSD: modulo concluido.");
@@ -575,16 +624,24 @@ public sealed class TweakEngine
               $"Continuam abertos (tem trabalho por guardar): {string.Join(", ", kept)}.";
     }
 
-    public void ApplyAll(Action<string>? progress = null)
+    /// <summary>Aplica todos os modulos e devolve um resumo do que passou e do que falhou.</summary>
+    public string ApplyAll(Action<string>? progress = null)
     {
         lock (_lock)
         {
             CreateRestorePoint();
+            var applied = new List<string>();
+            var failed = new List<string>();
             void Step(string label, Action action)
             {
                 progress?.Invoke(label);
                 Log.Write("A aplicar: " + label);
-                action();
+                try { action(); applied.Add(label); }
+                catch (Exception ex)
+                {
+                    failed.Add(label);
+                    Log.Write($"Modulo {label} falhou: {ex.Message}", "ERRO");
+                }
             }
             Step("GPU", TweakGpu);
             Step("Windows Gaming", TweakWindowsGaming);
@@ -596,7 +653,137 @@ public sealed class TweakEngine
             Step("Input lag", TweakInputLag);
             Step("SSD", TweakSsd);
             Backup.Save();
-            Log.Write("Pacote aplicado. Reinicia para kernel/GPU/BCD.");
+            Log.Write($"Pacote aplicado ({applied.Count} modulos, {failed.Count} com erro). Reinicia para kernel/GPU/BCD.");
+            return failed.Count == 0
+                ? $"Pacote aplicado: {applied.Count} modulos. Reinicia para aplicar kernel/GPU/BCD."
+                : $"Aplicados: {applied.Count}. Com erro: {string.Join(", ", failed)}. Os restantes ficaram aplicados; detalhe no log.";
+        }
+    }
+
+    // ---------- restauro de alteracoes fora do registo ----------
+
+    private static void RestoreDefrag(TouchedFlags touched)
+    {
+        if (touched.DefragWasEnabled == false)
+        {
+            Proc.Run("schtasks.exe", "/change /tn \"\\Microsoft\\Windows\\Defrag\\ScheduledDefrag\" /disable");
+            Log.Write("Desfragmentacao agendada mantida desligada (estava assim antes).");
+        }
+        else
+        {
+            Proc.Run("schtasks.exe", "/change /tn \"\\Microsoft\\Windows\\Defrag\\ScheduledDefrag\" /enable");
+            Log.Write("Desfragmentacao agendada reativada.");
+        }
+        touched.DefragTask = false;
+    }
+
+    private static void RestoreCompression(TouchedFlags touched)
+    {
+        if (touched.MemoryCompressionWasEnabled != false)
+        {
+            Proc.Run("powershell", "-NoProfile -NonInteractive -Command \"Enable-MMAgent -MemoryCompression\"");
+            Log.Write("Compressao de memoria reativada.");
+        }
+        else Log.Write("Compressao de memoria ja estava desligada: mantida.");
+        touched.MemoryCompression = false;
+    }
+
+    private static void RestoreHibernation(TouchedFlags touched)
+    {
+        if (touched.HibernateWasEnabled == true)
+        {
+            Proc.Run("powercfg.exe", "-h on");
+            Log.Write("Hibernacao reativada.");
+        }
+        touched.HibernateWasEnabled = null;
+    }
+
+    private static void RestoreTcp(TouchedFlags touched)
+    {
+        if (touched.TcpBefore.Count > 0) RestoreTcpGlobals(touched.TcpBefore);
+        else
+        {
+            Proc.Run("netsh.exe", "int tcp set global autotuninglevel=normal");
+            Proc.Run("netsh.exe", "int tcp set global ecncapability=disabled");
+            Proc.Run("netsh.exe", "int tcp set global timestamps=disabled");
+            Log.Write("Parametros TCP repostos.");
+        }
+        touched.TcpGlobals = false;
+    }
+
+    private static void RestoreTrim(TouchedFlags touched)
+    {
+        var target = touched.TrimBefore ?? 0;
+        Proc.Run("fsutil.exe", $"behavior set DisableDeleteNotify {target}");
+        Log.Write(target == 0 ? "TRIM reativado." : "TRIM reposto no estado original (desativado).");
+        touched.Trim = false;
+    }
+
+    /// <summary>Desfaz um modulo aplicado, sem tocar no que os outros mudaram.</summary>
+    public string RevertModule(string name)
+    {
+        lock (_lock)
+        {
+            if (!Backup.Data.Modules.TryGetValue(name, out var tokens) || tokens.Count == 0)
+                return $"O modulo {name} nao tem alteracoes guardadas para desfazer.";
+
+            var regs = 0;
+            var services = 0;
+            var bcd = 0;
+            var flags = 0;
+            foreach (var token in tokens.ToList())
+            {
+                if (token.StartsWith("reg::", StringComparison.Ordinal))
+                {
+                    var key = token[5..];
+                    if (!Backup.Data.Registry.Remove(key, out var snap)) continue;
+                    if (snap.Existed) Reg.Write(snap.Key, snap.Name, snap.Type, snap.Data);
+                    else Reg.DeleteValue(snap.Key, snap.Name);
+                    regs++;
+                }
+                else if (token.StartsWith("svc::", StringComparison.Ordinal))
+                {
+                    var key = token[5..];
+                    if (!Backup.Data.Services.Remove(key, out var snap)) continue;
+                    var start = snap.Start is "auto" or "demand" or "disabled" ? snap.Start : "demand";
+                    Proc.Run("sc.exe", $"config \"{snap.Name}\" start= {start}");
+                    if (snap.Running) Proc.Run("sc.exe", "start \"" + snap.Name + "\"");
+                    services++;
+                }
+                else if (token.StartsWith("bcd::", StringComparison.Ordinal))
+                {
+                    var key = token[5..];
+                    if (!Backup.Data.Bcd.Remove(key, out var snap)) continue;
+                    if (snap.Existed && !string.IsNullOrEmpty(snap.Value)) SetBcd(key, snap.Value, snapshot: false);
+                    else Proc.Run("bcdedit.exe", "/deletevalue " + key);
+                    bcd++;
+                }
+                else if (token == "power")
+                {
+                    if (!string.IsNullOrEmpty(Backup.Data.PowerScheme))
+                        Proc.Run("powercfg.exe", "-setactive " + Backup.Data.PowerScheme);
+                    flags++;
+                }
+                else if (token.StartsWith("flag::", StringComparison.Ordinal))
+                {
+                    var touched = Backup.Data.Touched;
+                    switch (token[6..])
+                    {
+                        case "defrag": RestoreDefrag(touched); break;
+                        case "memorycompression": RestoreCompression(touched); break;
+                        case "hibernate": RestoreHibernation(touched); break;
+                        case "tcp": RestoreTcp(touched); break;
+                        case "trim": RestoreTrim(touched); break;
+                        default: continue;
+                    }
+                    flags++;
+                }
+            }
+
+            Backup.Data.Modules.Remove(name);
+            Backup.Save();
+            Log.Write($"Modulo {name} desfeito ({regs} registo(s), {services} servico(s), {bcd} BCD, {flags} ajuste(s) de sistema).");
+            return $"{name} reposto: {regs} valor(es) de registo, {services} servico(s), {bcd} entrada(s) BCD, {flags} ajuste(s) de sistema.";
         }
     }
 
@@ -627,51 +814,13 @@ public sealed class TweakEngine
 
             // Alteracoes que nao cabem num valor de registo: repor o estado guardado.
             var touched = Backup.Data.Touched;
-            if (touched.DefragTask)
-            {
-                if (touched.DefragWasEnabled == false)
-                {
-                    Proc.Run("schtasks.exe", "/change /tn \"\\Microsoft\\Windows\\Defrag\\ScheduledDefrag\" /disable");
-                    Log.Write("Desfragmentacao agendada mantida desligada (estava assim antes).");
-                }
-                else
-                {
-                    Proc.Run("schtasks.exe", "/change /tn \"\\Microsoft\\Windows\\Defrag\\ScheduledDefrag\" /enable");
-                    Log.Write("Desfragmentacao agendada reativada.");
-                }
-            }
-            if (touched.MemoryCompression)
-            {
-                if (touched.MemoryCompressionWasEnabled != false)
-                {
-                    Proc.Run("powershell", "-NoProfile -NonInteractive -Command \"Enable-MMAgent -MemoryCompression\"");
-                    Log.Write("Compressao de memoria reativada.");
-                }
-                else Log.Write("Compressao de memoria ja estava desligada: mantida.");
-            }
-            if (touched.HibernateWasEnabled == true)
-            {
-                Proc.Run("powercfg.exe", "-h on");
-                Log.Write("Hibernacao reativada.");
-            }
-            if (touched.TcpGlobals)
-            {
-                if (touched.TcpBefore.Count > 0) RestoreTcpGlobals(touched.TcpBefore);
-                else
-                {
-                    Proc.Run("netsh.exe", "int tcp set global autotuninglevel=normal");
-                    Proc.Run("netsh.exe", "int tcp set global ecncapability=disabled");
-                    Proc.Run("netsh.exe", "int tcp set global timestamps=disabled");
-                    Log.Write("Parametros TCP repostos.");
-                }
-            }
-            if (touched.Trim)
-            {
-                var target = touched.TrimBefore ?? 0;
-                Proc.Run("fsutil.exe", $"behavior set DisableDeleteNotify {target}");
-                Log.Write(target == 0 ? "TRIM reativado." : "TRIM reposto no estado original (desativado).");
-            }
+            if (touched.DefragTask) RestoreDefrag(touched);
+            if (touched.MemoryCompression) RestoreCompression(touched);
+            if (touched.HibernateWasEnabled == true) RestoreHibernation(touched);
+            if (touched.TcpGlobals) RestoreTcp(touched);
+            if (touched.Trim) RestoreTrim(touched);
             Backup.Data.Touched = new TouchedFlags();
+            Backup.Data.Modules.Clear();
             Backup.Save();
 
             foreach (var (token, snap) in Backup.Data.Startup)
@@ -706,8 +855,11 @@ public sealed class TweakEngine
 
     // ---------- utilitarios ----------
 
-    public void VisualEffectsPerf() =>
+    public void VisualEffectsPerf()
+    {
+        using var _ = UseModule("Ferramentas");
         SetReg(@"HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\VisualEffects", "VisualFXSetting", "REG_DWORD", "2");
+    }
 
     public void CleanShaderCache()
     {
@@ -731,8 +883,11 @@ public sealed class TweakEngine
         Log.Write("Shaders: o primeiro jogo depois disto pode ir mais lento a compilar.");
     }
 
-    public void DisableFastStartup() =>
+    public void DisableFastStartup()
+    {
+        using var _ = UseModule("Ferramentas");
         SetReg(@"HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Power", "HiberbootEnabled", "REG_DWORD", "0");
+    }
 
     public void FlushDns()
     {

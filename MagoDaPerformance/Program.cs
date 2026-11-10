@@ -47,6 +47,24 @@ public static class Program
         }
 
         var app = new Application { ShutdownMode = ShutdownMode.OnMainWindowClose };
+
+        // Sem estes handlers, uma excecao numa pagina fechava a app com o dialogo do WPF
+        // e o utilizador so' via a janela a desaparecer.
+        AppDomain.CurrentDomain.UnhandledException += (_, e) =>
+        {
+            if (e.ExceptionObject is Exception ex) Dump("appdomain", ex);
+        };
+        app.DispatcherUnhandledException += (_, e) =>
+        {
+            Dump("dispatcher", e.Exception);
+            MessageBox.Show(
+                "Ocorreu um erro inesperado nesta janela.\n\n" + e.Exception.Message +
+                "\n\nO detalhe ficou registado em crash.txt (pasta de dados).",
+                "Mago da Performance", MessageBoxButton.OK, MessageBoxImage.Warning);
+            // Mantem a app aberta: perder a medicao de FPS ou o backup por um erro de UI e' pior.
+            e.Handled = true;
+        };
+
         try
         {
             app.Run(new MainWindow());

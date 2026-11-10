@@ -5,7 +5,12 @@ using System.Text.Json;
 
 namespace MagoDaPerformance;
 
-public sealed record UpdateInfo(string Version, string PageUrl, string? InstallerUrl, string Notes);
+public sealed record UpdateInfo(
+    string Version,
+    string PageUrl,
+    string? InstallerUrl,
+    string Notes,
+    string? Sha256Url = null);
 
 /// <summary>
 /// Auto-atualizacao pelo GitHub Releases: consulta a ultima versao, descarrega o
@@ -54,6 +59,36 @@ public static class Updater
                 a.Name.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
             .Url;
 
+    /// <summary>Ficheiro .sha256 publicado junto do instalador (pode nao existir).</summary>
+    internal static string? PickChecksum(IEnumerable<(string Name, string Url)> assets) =>
+        assets.FirstOrDefault(a =>
+                a.Name.StartsWith("MagoSetup-", StringComparison.OrdinalIgnoreCase) &&
+                a.Name.EndsWith(".sha256", StringComparison.OrdinalIgnoreCase))
+            .Url;
+
+    /// <summary>
+    /// Extrai o hash do formato publicado ("&lt;hex&gt;  MagoSetup-x.y.z.exe"). Devolve null
+    /// quando nao ha 64 caracteres hexadecimais: sem hash valido nao se instala nada.
+    /// </summary>
+    internal static string? ParseSha256(string? text)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return null;
+        foreach (var raw in text.Split(new[] { '\r', '\n', ' ', '\t', '*' }, StringSplitOptions.RemoveEmptyEntries))
+        {
+            var token = raw.Trim();
+            if (token.Length != 64) continue;
+            if (token.Any(c => !Uri.IsHexDigit(c))) continue;
+            return token.ToLowerInvariant();
+        }
+        return null;
+    }
+
+    internal static string HashFile(string path)
+    {
+        using var stream = File.OpenRead(path);
+        return Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(stream)).ToLowerInvariant();
+    }
+
     /// <summary>Interpreta a resposta de /releases/latest. Devolve null sem tag valida.</summary>
     internal static UpdateInfo? ParseRelease(string json)
     {
@@ -78,7 +113,7 @@ public static class Updater
             }
         }
 
-        return new UpdateInfo(version.ToString(), page, PickInstaller(assets), notes);
+        return new UpdateInfo(version.ToString(), page, PickInstaller(assets), notes, PickChecksum(assets));
     }
 
     /// <summary>Consulta a ultima release. Devolve null quando ja estamos atualizados.</summary>
@@ -135,6 +170,26 @@ public static class Updater
             }
             if (new FileInfo(partial).Length < MinimumInstallerBytes)
                 throw new InvalidOperationException("o instalador descarregado esta incompleto");
+
+            // Verifica o hash publicado na release antes de deixar o ficheiro pronto a instalar.
+            if (!string.IsNullOrEmpty(info.Sha256Url))
+            {
+                var expected = ParseSha256(Http.GetStringAsync(info.Sha256Url).GetAwaiter().GetResult());
+                if (expected == null)
+                    throw new InvalidOperationException("o ficheiro .sha256 da release nao tem um hash valido");
+                var actual = HashFile(partial);
+                if (!actual.Equals(expected, StringComparison.OrdinalIgnoreCase))
+                {
+                    Log.Write($"Hash do instalador nao confere (esperado {expected}, obtido {actual}).", "ERRO");
+                    throw new InvalidOperationException("o instalador descarregado nao corresponde ao hash publicado");
+                }
+                Log.Write("Hash do instalador confirmado (SHA256).");
+            }
+            else
+            {
+                Log.Write("Release sem .sha256: instalador seguiu sem verificacao de hash.", "AVISO");
+            }
+
             File.Move(partial, destination, true);
         }
         catch

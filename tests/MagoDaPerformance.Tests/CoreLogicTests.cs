@@ -350,3 +350,69 @@ public class AppSettingsTests : IDisposable
         }
     }
 }
+
+/// <summary>Verificacao do hash publicado na release antes de instalar uma atualizacao.</summary>
+public class UpdateChecksumTests
+{
+    [Theory]
+    [InlineData("500c620b221ff53bf868a00c8f2e52962b026c665e72e96ba6d370948084641f  MagoSetup-0.2.7.exe",
+        "500c620b221ff53bf868a00c8f2e52962b026c665e72e96ba6d370948084641f")]
+    [InlineData("500C620B221FF53BF868A00C8F2E52962B026C665E72E96BA6D370948084641F *MagoSetup-0.2.7.exe",
+        "500c620b221ff53bf868a00c8f2e52962b026c665e72e96ba6d370948084641f")]
+    [InlineData("linha qualquer\r\n500c620b221ff53bf868a00c8f2e52962b026c665e72e96ba6d370948084641f\r\n",
+        "500c620b221ff53bf868a00c8f2e52962b026c665e72e96ba6d370948084641f")]
+    public void ParseSha256_aceita_o_formato_publicado(string text, string expected) =>
+        Assert.Equal(expected, Updater.ParseSha256(text));
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("nao tem hash")]
+    [InlineData("500c620b221ff53bf868a00c8f2e52962b026c665e72e96ba6d370948084641")]   // 63 chars
+    [InlineData("zzzzzb221ff53bf868a00c8f2e52962b026c665e72e96ba6d370948084641f")]   // nao hex
+    public void ParseSha256_rejeita_hash_invalido(string text) =>
+        Assert.Null(Updater.ParseSha256(text));
+
+    [Fact]
+    public void PickChecksum_encontra_o_sha256_do_setup()
+    {
+        var assets = new List<(string Name, string Url)>
+        {
+            ("MagoSetup-0.2.7.exe", "https://example.com/setup"),
+            ("MagoSetup-0.2.7.exe.sha256", "https://example.com/sha"),
+        };
+        Assert.Equal("https://example.com/sha", Updater.PickChecksum(assets));
+    }
+
+    [Fact]
+    public void PickChecksum_sem_fica_vazio()
+    {
+        var assets = new List<(string Name, string Url)> { ("MagoSetup-0.2.7.exe", "https://example.com/setup") };
+        Assert.Null(Updater.PickChecksum(assets));
+    }
+
+    [Fact]
+    public void ParseRelease_guarda_o_sha256_da_release()
+    {
+        const string json = """
+        { "tag_name": "v0.2.8", "html_url": "x", "assets": [
+            { "name": "MagoSetup-0.2.8.exe", "browser_download_url": "https://example.com/setup" },
+            { "name": "MagoSetup-0.2.8.exe.sha256", "browser_download_url": "https://example.com/sha" } ] }
+        """;
+        var info = Updater.ParseRelease(json);
+        Assert.Equal("https://example.com/sha", info!.Sha256Url);
+    }
+
+    [Fact]
+    public void HashFile_bate_com_o_formato_do_parser()
+    {
+        var path = Path.Combine(Path.GetTempPath(), "mago_hash_" + Guid.NewGuid().ToString("N") + ".bin");
+        try
+        {
+            File.WriteAllBytes(path, new byte[] { 1, 2, 3, 4 });
+            var hash = Updater.HashFile(path);
+            Assert.Equal(64, hash.Length);
+            Assert.Equal(hash, Updater.ParseSha256($"{hash}  MagoSetup-x.exe"));
+        }
+        finally { if (File.Exists(path)) File.Delete(path); }
+    }
+}

@@ -27,7 +27,7 @@ public partial class MainWindow : Window
 
     public MainWindow()
     {
-        Title = "MAGO DA PERFORMANCE v6.0";
+        Title = $"MAGO DA PERFORMANCE {Updater.DisplayVersion}";
         FitWindowToScreen();
         Background = Ui.Br(Ui.Bg);
         FontFamily = Ui.UiFont;
@@ -79,7 +79,7 @@ public partial class MainWindow : Window
 
         Loaded += (_, _) =>
         {
-            Log.Write("Mago da Performance v6.0 (C#) iniciado.");
+            Log.Write($"Mago da Performance {Updater.DisplayVersion} (C#) iniciado.");
             if (!Proc.IsAdmin()) Log.Write("Sem privilegios de administrador - varias funcoes vao falhar.", "AVISO");
             System.Threading.Tasks.Task.Run(() =>
             {
@@ -119,7 +119,7 @@ public partial class MainWindow : Window
         var left = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(22, 0, 0, 0) };
         left.Children.Add(Ui.Lbl("MAGO", 20, Ui.Purple, bold: true, wrap: false));
         left.Children.Add(Ui.Lbl(" DA PERFORMANCE", 20, Ui.Txt, bold: true, wrap: false));
-        var version = Ui.Lbl("   v6.0  CONTROL CENTER", 10, Ui.Dim, wrap: false);
+        var version = Ui.Lbl($"   v{Updater.DisplayVersion}  CONTROL CENTER", 10, Ui.Dim, wrap: false);
         version.VerticalAlignment = VerticalAlignment.Center;
         _headerVersion = version;
         left.Children.Add(version);
@@ -303,23 +303,38 @@ public partial class MainWindow : Window
         catch { }
     }
 
-    /// <summary>Corre uma tarefa longa sem bloquear a UI.</summary>
+    /// <summary>
+    /// Corre uma tarefa longa sem bloquear a UI. Uma falha tem de chegar ao utilizador:
+    /// antes so' ia para o log e a barra de estado anunciava sucesso.
+    /// </summary>
     public void RunTask(Func<string?> work, string busyLabel)
     {
         Busy(true, busyLabel);
         Status(busyLabel);
         System.Threading.Tasks.Task.Run(() =>
         {
-            try
+            string? result = null;
+            Exception? failure = null;
+            try { result = work(); }
+            catch (Exception ex)
             {
-                var result = work();
-                if (!string.IsNullOrEmpty(result)) Dispatcher.Invoke(() => Info(result!));
+                failure = ex;
+                Log.Write($"{busyLabel} falhou: {ex.Message}", "ERRO");
             }
-            catch (Exception ex) { Log.Write(ex.Message, "ERRO"); }
-            finally
+
+            Dispatcher.Invoke(() =>
             {
-                Dispatcher.Invoke(() => { Busy(false, "Pronto."); });
-            }
+                Busy(false);
+                if (failure != null)
+                {
+                    Status("Falhou: " + busyLabel.TrimEnd('.', '!'));
+                    Info($"Nao foi possivel concluir: {busyLabel}\n\n{failure.Message}\n\nDetalhes no log.", "Falhou");
+                    return;
+                }
+
+                Status("Pronto.");
+                if (!string.IsNullOrEmpty(result)) Info(result!, "Concluido");
+            });
         });
     }
 

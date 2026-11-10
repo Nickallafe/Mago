@@ -8,6 +8,8 @@ public sealed class OptimizePage : PageBase
     private readonly RadioButton _balanced;
     private readonly RadioButton _competitive;
     private readonly TextBlock _hint;
+    private readonly ListBox _modulesList;
+    private readonly TextBlock _modulesStatus;
 
     public OptimizePage(MainWindow host) : base(host, "Otimizar",
         "Cada modulo guarda o valor original antes de alterar. Usa Backup para voltar atras.")
@@ -58,9 +60,55 @@ public sealed class OptimizePage : PageBase
         allBody.Children.Add(Ui.Lbl(
             "Reinicia o PC depois de mexer em kernel, GPU, VBS ou BCD.", 10, Ui.Gold));
 
+        // Desfazer um modulo sem voltar ao backup inteiro.
+        var undo = Card("DESFAZER UM MODULO", 420);
+        var undoBody = BodyOf(undo);
+        undoBody.Children.Add(Ui.Lbl(
+            "Repoe apenas o que o modulo escolhido alterou. Temp, caches e apps fechados nao voltam atras.",
+            11, Ui.Dim));
+        _modulesList = Ui.TextList(120);
+        _modulesStatus = Ui.Lbl("", 11, Ui.Dim);
+        undoBody.Children.Add(_modulesList);
+        undoBody.Children.Add(Ui.Wrap(
+            Ui.Btn("Desfazer selecionado", RevertSelectedModule),
+            Ui.Btn("Atualizar lista", LoadModules)));
+        undoBody.Children.Add(_modulesStatus);
+
         Add(Row(profile, modules));
-        Add(Row(all));
+        Add(Row(all, undo));
+
+        LoadModules();
     }
+
+    private void LoadModules()
+    {
+        var applied = Host.Engine.AppliedModules();
+        _modulesList.Items.Clear();
+        foreach (var module in applied) _modulesList.Items.Add(module);
+        if (_modulesList.SelectedItem == null && applied.Count > 0) _modulesList.SelectedIndex = 0;
+        _modulesStatus.Text = applied.Count == 0
+            ? "Nenhum modulo aplicado desde a ultima captura de backup."
+            : $"{applied.Count} modulo(s) com alteracoes guardadas.";
+    }
+
+    private void RevertSelectedModule()
+    {
+        if (_modulesList.SelectedItem is not string module)
+        {
+            Host.Info("Seleciona um modulo na lista.", "Desfazer modulo");
+            return;
+        }
+        if (!Host.Confirm($"Desfazer apenas o modulo {module}?", "Desfazer modulo")) return;
+
+        Host.RunTask(() =>
+        {
+            var result = Host.Engine.RevertModule(module);
+            LoadModules();
+            return result;
+        }, "A desfazer " + module);
+    }
+
+    public override void OnShown() => LoadModules();
 
     private static StackPanel BodyOf(Border card) => (StackPanel)((StackPanel)card.Child).Children[1];
 
@@ -107,8 +155,9 @@ public sealed class OptimizePage : PageBase
 
         Host.RunTask(() =>
         {
-            Host.Engine.ApplyAll(label => Host.Dispatcher.Invoke(() => Host.Status("A aplicar: " + label)));
-            return "Otimizacoes aplicadas. Reinicia o PC se mexeste em kernel/GPU.";
+            var summary = Host.Engine.ApplyAll(label => Host.Dispatcher.Invoke(() => Host.Status("A aplicar: " + label)));
+            LoadModules();
+            return summary;
         }, "A aplicar otimizacoes...");
     }
 
@@ -123,6 +172,7 @@ public sealed class OptimizePage : PageBase
         Host.RunTask(() =>
         {
             Host.Engine.RevertAll();
+            LoadModules();
             return "Restauro concluido. Reinicia se alteraste BCD/VBS/GPU.";
         }, "A restaurar backup...");
     }

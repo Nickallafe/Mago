@@ -62,6 +62,10 @@ public sealed class BackupData
     [JsonPropertyName("startup")] public Dictionary<string, StartupSnap> Startup { get; set; } = new();
     [JsonPropertyName("notes")] public List<string> Notes { get; set; } = new();
     [JsonPropertyName("touched")] public TouchedFlags Touched { get; set; } = new();
+
+    // Modulo -> tokens do que ele alterou ("reg::CHAVE::VALOR", "svc::nome", "bcd::nome",
+    // "power", "flag::x"). Permite desfazer um modulo sem desfazer os outros.
+    [JsonPropertyName("modules")] public Dictionary<string, List<string>> Modules { get; set; } = new();
 }
 
 public sealed class BackupStore
