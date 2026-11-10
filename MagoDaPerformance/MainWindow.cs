@@ -32,6 +32,10 @@ public partial class MainWindow : Window
         Background = Ui.Br(Ui.Bg);
         FontFamily = Ui.UiFont;
 
+        // CheckBox/RadioButton seguem a paleta (o template padrao do Windows e' claro).
+        Resources[typeof(CheckBox)] = Ui.DarkCheck;
+        Resources[typeof(RadioButton)] = Ui.DarkRadio;
+
         // Breakpoints: Compact <768, Medium <1200, Wide >=1200.
         // Aplicado diretamente no layout porque a janela nao define VisualStates.
         SizeChanged += OnSizeChanged;

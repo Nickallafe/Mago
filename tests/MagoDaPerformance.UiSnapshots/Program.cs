@@ -119,13 +119,15 @@ internal static class Program
         if (window.Content is not FrameworkElement root) return;
         foreach (var element in Walk(root))
         {
-            if (element is not FrameworkElement fe || fe.ActualWidth < 60 || fe.ActualHeight < 24) continue;
+            if (element is not FrameworkElement fe) continue;
+            var small = fe is CheckBox or RadioButton or Button;
+            if (!small && (fe.ActualWidth < 60 || fe.ActualHeight < 24)) continue;
             var point = fe.TransformToAncestor(root).Transform(new Point(0, 0));
             var brush = (fe as Control)?.Background as SolidColorBrush
                         ?? (fe as Panel)?.Background as SolidColorBrush
                         ?? (fe as Border)?.Background as SolidColorBrush;
             var kind = fe.GetType().Name;
-            if (kind is not ("ListBox" or "TextBox" or "Border" or "ResponsiveCard")) continue;
+            if (kind is not ("ListBox" or "TextBox" or "Border" or "ResponsiveCard" or "CheckBox" or "RadioButton" or "Button")) continue;
             var kids = fe is Border { Child: FrameworkElement child }
                 ? $" childDesired={child.DesiredSize.Height:0} childActual={child.ActualHeight:0}"
                 : "";

@@ -289,6 +289,102 @@ public static class Ui
         };
     }
 
+    /// <summary>
+    /// CheckBox escuro do tema. O template padrao do Windows e' claro: no cartao do
+    /// overlay aparecia um quadrado branco no meio do fundo escuro.
+    /// </summary>
+    public static Style DarkCheck { get; } = BuildDarkCheck();
+
+    private static Style BuildDarkCheck()
+    {
+        var line = Line.ToString();
+        var green = Green.ToString();
+        var input = Color.FromRgb(0x05, 0x07, 0x0B).ToString();
+        var ink = Color.FromRgb(0x04, 0x0A, 0x07).ToString();
+
+        var xaml = $$"""
+<ControlTemplate xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                 xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                 TargetType="{x:Type CheckBox}">
+  <StackPanel Orientation="Horizontal" Background="Transparent">
+    <Border x:Name="Box" Width="14" Height="14" CornerRadius="4"
+            Background="{{input}}" BorderBrush="{{line}}" BorderThickness="1"
+            VerticalAlignment="Center">
+      <Path x:Name="Mark" Data="M 2,6 L 5,9 L 10,3" Stroke="{{ink}}" StrokeThickness="2"
+            StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+            HorizontalAlignment="Center" VerticalAlignment="Center" Visibility="Collapsed" />
+    </Border>
+    <ContentPresenter Margin="6,0,0,0" VerticalAlignment="Center" RecognizesAccessKey="True" />
+  </StackPanel>
+  <ControlTemplate.Triggers>
+    <Trigger Property="IsChecked" Value="True">
+      <Setter TargetName="Box" Property="Background" Value="{{green}}" />
+      <Setter TargetName="Box" Property="BorderBrush" Value="{{green}}" />
+      <Setter TargetName="Mark" Property="Visibility" Value="Visible" />
+    </Trigger>
+    <Trigger Property="IsMouseOver" Value="True">
+      <Setter TargetName="Box" Property="BorderBrush" Value="{{green}}" />
+    </Trigger>
+    <Trigger Property="IsEnabled" Value="False">
+      <Setter Property="Opacity" Value="0.45" />
+    </Trigger>
+  </ControlTemplate.Triggers>
+</ControlTemplate>
+""";
+
+        return new Style(typeof(CheckBox))
+        {
+            Setters =
+            {
+                new Setter(Control.TemplateProperty, (ControlTemplate)XamlReader.Parse(xaml)),
+            },
+        };
+    }
+
+    /// <summary>RadioButton escuro do tema (anel Line, ponto Green), alinhado ao CheckBox.</summary>
+    public static Style DarkRadio { get; } = BuildDarkRadio();
+
+    private static Style BuildDarkRadio()
+    {
+        var line = Line.ToString();
+        var green = Green.ToString();
+        var input = Color.FromRgb(0x05, 0x07, 0x0B).ToString();
+
+        var xaml = $$"""
+<ControlTemplate xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                 xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                 TargetType="{x:Type RadioButton}">
+  <StackPanel Orientation="Horizontal" Background="Transparent">
+    <Grid Width="14" Height="14" VerticalAlignment="Center">
+      <Ellipse x:Name="Ring" Fill="{{input}}" Stroke="{{line}}" StrokeThickness="1" />
+      <Ellipse x:Name="Dot" Width="7" Height="7" Fill="{{green}}" Visibility="Collapsed" />
+    </Grid>
+    <ContentPresenter Margin="6,0,0,0" VerticalAlignment="Center" RecognizesAccessKey="True" />
+  </StackPanel>
+  <ControlTemplate.Triggers>
+    <Trigger Property="IsChecked" Value="True">
+      <Setter TargetName="Dot" Property="Visibility" Value="Visible" />
+      <Setter TargetName="Ring" Property="Stroke" Value="{{green}}" />
+    </Trigger>
+    <Trigger Property="IsMouseOver" Value="True">
+      <Setter TargetName="Ring" Property="Stroke" Value="{{green}}" />
+    </Trigger>
+    <Trigger Property="IsEnabled" Value="False">
+      <Setter Property="Opacity" Value="0.45" />
+    </Trigger>
+  </ControlTemplate.Triggers>
+</ControlTemplate>
+""";
+
+        return new Style(typeof(RadioButton))
+        {
+            Setters =
+            {
+                new Setter(Control.TemplateProperty, (ControlTemplate)XamlReader.Parse(xaml)),
+            },
+        };
+    }
+
     public static ScrollViewer Scroll(UIElement content) => new()
     {
         Content = content,
