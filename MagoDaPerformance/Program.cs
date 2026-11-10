@@ -24,6 +24,16 @@ public static class Program
                 if (arg.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
                     StartPage = arg[prefix.Length..].Trim().ToLowerInvariant();
         }
+        // CLI: versao para scripts/updater. Antes do mutex e do UAC: tem de funcionar
+        // mesmo com a app ja aberta e sem pedir elevacao.
+        if (args.Any(a => a.Equals("--version", StringComparison.OrdinalIgnoreCase)
+                          || a.Equals("-v", StringComparison.OrdinalIgnoreCase)
+                          || a.Equals("/version", StringComparison.OrdinalIgnoreCase)))
+        {
+            Console.WriteLine(Updater.DisplayVersion);
+            return 0;
+        }
+
         if (args.Any(a => a.Equals("--selfcheck", StringComparison.OrdinalIgnoreCase)))
             return SelfCheck();
 

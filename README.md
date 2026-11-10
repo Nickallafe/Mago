@@ -88,6 +88,13 @@ Diagnóstico sem abrir a interface:
 publish\MagoDaPerformance.exe --selfcheck
 ```
 
+Versão, para scripts ou para o updater (imprime e sai sem abrir janela nem pedir
+elevação; funciona com o app já aberto):
+
+```bat
+publish\MagoDaPerformance.exe --version
+```
+
 ## Atualizações
 
 O app consulta a última release do GitHub **a cada arranque**, descarrega o
