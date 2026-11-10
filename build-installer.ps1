@@ -38,13 +38,27 @@ $project = Join-Path $projectDir 'MagoDaPerformance.csproj'
 if (-not (Test-Path -LiteralPath $project)) { throw "Projeto C# nao encontrado: $project" }
 if (-not (Test-Path -LiteralPath $issFile)) { throw "MagoSetup.iss nao encontrado em $root." }
 
-# 0. Localizar o dotnet (PATH ou instalacao do usuario)
-$dotnet = (Get-Command dotnet -ErrorAction SilentlyContinue).Source
-if (-not $dotnet) {
-    $candidate = Join-Path $env:LOCALAPPDATA 'Microsoft\dotnet\dotnet.exe'
-    if (Test-Path -LiteralPath $candidate) { $dotnet = $candidate }
+# 0. Localizar um dotnet que tenha SDK instalado.
+#    O dotnet do PATH pode ser so' o host do runtime ("No SDKs were found"), por isso
+#    cada candidato e' validado com --list-sdks antes de ser usado.
+function Test-DotnetSdk([string] $path) {
+    if (-not $path -or -not (Test-Path -LiteralPath $path)) { return $false }
+    $sdks = & $path --list-sdks 2>$null
+    return ($LASTEXITCODE -eq 0 -and $sdks)
 }
-if (-not $dotnet -and -not $SkipExe) { throw "dotnet nao encontrado. Instale o .NET SDK 10." }
+
+$dotnet = $null
+$candidates = @()
+$onPath = (Get-Command dotnet -ErrorAction SilentlyContinue).Source
+if ($onPath) { $candidates += $onPath }
+$candidates += (Join-Path $env:LOCALAPPDATA 'Microsoft\dotnet\dotnet.exe')
+foreach ($cand in $candidates) {
+    if (Test-DotnetSdk $cand) { $dotnet = $cand; break }
+}
+if (-not $dotnet -and -not $SkipExe) {
+    throw "nenhum dotnet com SDK 10 encontrado (testado: $($candidates -join ', ')). Instale o .NET SDK 10."
+}
+if ($dotnet) { Write-Host "dotnet: $dotnet" -ForegroundColor DarkGray }
 
 # 1. Executavel self-contained
 if (-not $SkipExe) {
