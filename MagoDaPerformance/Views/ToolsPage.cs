@@ -12,31 +12,31 @@ public sealed class ToolsPage : PageBase
     public ToolsPage(MainWindow host) : base(host, "Ferramentas",
         "Utilitarios de manutencao e controlo dos programas de arranque.")
     {
-        var utils = Card("UTILITARIOS", 360);
+        // Sem "Limpar DNS" nem "Abrir log": ja' existem em Rede e na barra lateral, e repetir
+        // a mesma acao em dois sitios so' faz duvidar de qual e' o certo.
+        var utils = Card("UTILITARIOS DO WINDOWS", 360);
         var utilsBody = BodyOf(utils);
         utilsBody.Children.Add(Ui.Wrap(
             Ui.Btn("Efeitos visuais: desempenho", () => Host.RunTask(() => { Host.Engine.VisualEffectsPerf(); return null; }, "Efeitos visuais...")),
             Ui.Btn("Limpar cache de shaders", ClearShaderCache),
             Ui.Btn("Desativar arranque rapido", () => Host.RunTask(() => { Host.Engine.DisableFastStartup(); return "Entra em vigor no proximo desligar."; }, "Arranque rapido...")),
-            Ui.Btn("Limpar DNS", () => Host.Engine.FlushDns()),
             Ui.Btn("Reiniciar Explorer", () =>
             {
                 if (Host.Confirm("Reiniciar o Explorador de Ficheiros?", "Explorer")) Host.Engine.RestartExplorer();
             }),
-            Ui.Btn("Abrir log", () => Proc.OpenUri(Paths.LogFile)),
             Ui.Btn("Abrir pasta de dados", () => Proc.OpenUri(Paths.DataDir))));
 
-        var startupCard = Card("PROGRAMAS DE ARRANQUE", 600);
+        var startupCard = Card("PROGRAMAS DE ARRANQUE", 970);
         var startupBody = BodyOf(startupCard);
         _startup = Ui.TextList(240);
         _startupStatus = Ui.Lbl("", 11, Ui.Dim);
         startupBody.Children.Add(Ui.Wrap(
-            Ui.Btn("Listar", LoadStartup),
+            Ui.Btn("Listar programas", LoadStartup),
             Ui.Btn("Desativar selecionado", DisableStartup)));
         startupBody.Children.Add(_startup);
         startupBody.Children.Add(_startupStatus);
 
-        var updatesCard = Card("ATUALIZACOES", 360);
+        var updatesCard = Card("ATUALIZACOES DO MAGO", 360);
         var updatesBody = BodyOf(updatesCard);
         updatesBody.Children.Add(Ui.Lbl($"Versao atual: {Updater.DisplayVersion}", 11, Ui.Dim));
         var autoUpdate = new CheckBox
@@ -53,8 +53,10 @@ public sealed class ToolsPage : PageBase
             Ui.Btn("Verificar agora", () => Host.CheckForUpdates(silent: false)),
             Ui.Btn("Abrir releases", () => Proc.OpenUri($"https://github.com/{Updater.Repository}/releases"))));
 
-        Add(Row(utils, startupCard));
-        Add(Row(updatesCard));
+        // Utilitarios e atualizacoes sao curtos e ficam lado a lado; a lista de arranque,
+        // que e' alta, ocupa a linha inteira por baixo (antes deixava um buraco ao lado).
+        Add(Row(utils, updatesCard));
+        Add(Row(startupCard));
     }
 
     /// <summary>A cache volta a ser compilada pelos jogos: o primeiro arranque fica mais lento.</summary>

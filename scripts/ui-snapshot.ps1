@@ -1,7 +1,7 @@
 #Requires -Version 5.1
 <#
 .SYNOPSIS
-  Gera PNGs das paginas (painel, otimizar, rede) para revisao visual do layout.
+  Gera PNGs das paginas (painel, otimizar, jogos, rede, ferramentas) para revisao visual do layout.
 
 .DESCRIPTION
   Corre o harness tests/MagoDaPerformance.UiSnapshots a 1280 px de largura e grava os

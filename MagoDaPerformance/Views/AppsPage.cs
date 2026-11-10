@@ -11,10 +11,10 @@ public sealed class AppsPage : PageBase
     private List<AppEntry> _all = new();
     private bool _loaded;
 
-    public AppsPage(MainWindow host) : base(host, "Aplicativos",
-        "Lista o que esta instalado. Prefere sempre a desinstalacao oficial.")
+    public AppsPage(MainWindow host) : base(host, "Aplicativos instalados",
+        "Pesquise o que esta instalado e remova o que nao usa. Use sempre a desinstalacao oficial.")
     {
-        var card = Card("PROGRAMAS INSTALADOS", 900);
+        var card = Card("PROGRAMAS NO PC", 970);
         var body = BodyOf(card);
 
         _search = Ui.Input("Pesquisar por nome, fabricante ou tipo...", 420);
@@ -24,7 +24,7 @@ public sealed class AppsPage : PageBase
 
         body.Children.Add(Ui.Wrap(
             _search,
-            Ui.Btn("ATUALIZAR LISTA", () => LoadApps(true)),
+            Ui.Btn("Atualizar lista", () => LoadApps(true)),
             Ui.Btn("Desinstalar", Uninstall),
             Ui.Btn("Remocao forcada", ForceUninstall)));
         body.Children.Add(_list);

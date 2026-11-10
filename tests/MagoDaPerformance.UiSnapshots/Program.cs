@@ -44,7 +44,7 @@ internal static class Program
             Pump();
 
             var dump = args.Contains("--dump");
-            foreach (var page in new[] { "painel", "otimizar", "rede" })
+            foreach (var page in new[] { "painel", "otimizar", "jogos", "rede", "ferramentas" })
             {
                 window.ShowPage(page);
                 Pump();
@@ -54,6 +54,13 @@ internal static class Program
                 Console.WriteLine(captured
                     ? $"{page}.png ok"
                     : $"{page}.png falhou (pagina sem conteudo)");
+            }
+
+            // Janela inteira: e' a unica forma de rever a barra lateral e o cabecalho.
+            if (window.Content is FrameworkElement frame)
+            {
+                CaptureWindow(frame, Path.Combine(output, "janela.png"));
+                Console.WriteLine("janela.png ok");
             }
         }
         catch (Exception ex)
@@ -84,25 +91,28 @@ internal static class Program
         var content = page is ScrollViewer { Content: FrameworkElement inner } ? inner : page as FrameworkElement;
         if (content == null) return false;
 
-        content.Measure(new Size(PageWidth, double.PositiveInfinity));
+        // Largura real da pagina, nao a da janela: o conteudo fica ao lado da barra lateral
+        // e capturar a 1280 deixava uma faixa vazia a direita que nao existe na app.
+        var width = Math.Min(PageWidth, Math.Max(320, content.ActualWidth > 0 ? content.ActualWidth : PageWidth));
+        content.Measure(new Size(width, double.PositiveInfinity));
         var height = Math.Min(MaxHeight, Math.Max(120, content.DesiredSize.Height));
-        content.Arrange(new Rect(0, 0, PageWidth, height));
+        content.Arrange(new Rect(0, 0, width, height));
         content.UpdateLayout();
 
         // O conteudo e' transparente: sem esta composicao o PNG sai branco.
         var element = new RenderTargetBitmap(
-            (int)Math.Ceiling(PageWidth), (int)Math.Ceiling(height), 96, 96, PixelFormats.Pbgra32);
+            (int)Math.Ceiling(width), (int)Math.Ceiling(height), 96, 96, PixelFormats.Pbgra32);
         element.Render(content);
 
         var frame = new DrawingVisual();
         using (var dc = frame.RenderOpen())
         {
-            var area = new Rect(0, 0, PageWidth, height);
+            var area = new Rect(0, 0, width, height);
             dc.DrawRectangle(Ui.Br(Ui.Bg), null, area);
             dc.DrawRectangle(new ImageBrush(BitmapFrame.Create(element)), null, area);
         }
         var composed = new RenderTargetBitmap(
-            (int)Math.Ceiling(PageWidth), (int)Math.Ceiling(height), 96, 96, PixelFormats.Pbgra32);
+            (int)Math.Ceiling(width), (int)Math.Ceiling(height), 96, 96, PixelFormats.Pbgra32);
         composed.Render(frame);
 
         var encoder = new PngBitmapEncoder();
@@ -110,6 +120,22 @@ internal static class Program
         using var stream = File.Create(path);
         encoder.Save(stream);
         return true;
+    }
+
+    /// <summary>Desenha a janela tal como esta' no ecra, sem voltar a medir (mantem 1280x860).</summary>
+    private static void CaptureWindow(FrameworkElement root, string path)
+    {
+        var width = (int)Math.Ceiling(root.ActualWidth);
+        var height = (int)Math.Ceiling(root.ActualHeight);
+        if (width <= 0 || height <= 0) return;
+
+        var bitmap = new RenderTargetBitmap(width, height, 96, 96, PixelFormats.Pbgra32);
+        bitmap.Render(root);
+
+        var encoder = new PngBitmapEncoder();
+        encoder.Frames.Add(BitmapFrame.Create(bitmap));
+        using var stream = File.Create(path);
+        encoder.Save(stream);
     }
 
     /// <summary>Diagnostico: lista os blocos grandes da pagina com posicao e cor de fundo.</summary>

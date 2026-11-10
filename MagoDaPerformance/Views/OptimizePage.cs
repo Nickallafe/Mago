@@ -12,9 +12,10 @@ public sealed class OptimizePage : PageBase
     private readonly TextBlock _modulesStatus;
 
     public OptimizePage(MainWindow host) : base(host, "Otimizar",
-        "Cada modulo guarda o valor original antes de alterar. Usa Backup para voltar atras.")
+        "Escolha um perfil e aplique tudo, ou mexa so' nas otimizacoes que quiser. " +
+        "Cada uma guarda o valor original antes de alterar.")
     {
-        var profile = Card("PERFIL", 380);
+        var profile = Card("PERFIL DE OTIMIZACAO", 380);
         var profileBody = BodyOf(profile);
         _balanced = new RadioButton
         {
@@ -25,7 +26,7 @@ public sealed class OptimizePage : PageBase
         };
         _competitive = new RadioButton
         {
-            Content = "Competitivo - timers e TDR mais tolerantes",
+            Content = "Competitivo - mais agressivo, menos seguro",
             Foreground = Ui.Br(Ui.Txt),
             Margin = new Thickness(0, 4, 0, 8),
         };
@@ -36,29 +37,32 @@ public sealed class OptimizePage : PageBase
         profileBody.Children.Add(_competitive);
         profileBody.Children.Add(_hint);
 
-        var modules = Card("MODULOS", 520);
+        var modules = Card("OTIMIZACOES UMA A UMA", 520);
         var modBody = BodyOf(modules);
+        modBody.Children.Add(Ui.Lbl(
+            "Cada botao aplica apenas aquele ajuste, para poder testar um de cada vez.", 11, Ui.Dim));
         modBody.Children.Add(Ui.Wrap(
-            Ui.Btn("GPU / HAGS", () => Host.RunTask(() => { Host.Engine.TweakGpu(); return null; }, "GPU...")),
-            Ui.Btn("Windows Gaming", () => Host.RunTask(() => { Host.Engine.TweakWindowsGaming(); return null; }, "Windows Gaming...")),
-            Ui.Btn("Registo multimedia", () => Host.RunTask(() => { Host.Engine.TweakReg(); return null; }, "Registo...")),
-            Ui.Btn("Plano de energia", () => Host.RunTask(() => { Host.Engine.TweakPower(); return null; }, "Energia...")),
-            Ui.Btn("Servicos", () => Host.RunTask(() => { Host.Engine.TweakServices(); return null; }, "Servicos...")),
-            Ui.Btn("Temp + DNS", () => Host.RunTask(() => Host.Engine.CleanTempAndDns(), "Limpeza...")),
-            Ui.Btn("Rede", () => Host.RunTask(() => { Host.Engine.TweakNetwork(); return null; }, "Rede...")),
+            Ui.Btn("GPU (HAGS)", () => Host.RunTask(() => { Host.Engine.TweakGpu(); return null; }, "GPU...")),
+            Ui.Btn("Modo Jogo do Windows", () => Host.RunTask(() => { Host.Engine.TweakWindowsGaming(); return null; }, "Modo Jogo...")),
+            Ui.Btn("Multimedia", () => Host.RunTask(() => { Host.Engine.TweakReg(); return null; }, "Multimedia...")),
+            Ui.Btn("Energia", () => Host.RunTask(() => { Host.Engine.TweakPower(); return null; }, "Energia...")),
+            Ui.Btn("Servicos do Windows", () => Host.RunTask(() => { Host.Engine.TweakServices(); return null; }, "Servicos...")),
+            Ui.Btn("Temporarios e DNS", () => Host.RunTask(() => Host.Engine.CleanTempAndDns(), "Limpeza...")),
+            Ui.Btn("TCP e ping", () => Host.RunTask(() => { Host.Engine.TweakNetwork(); return null; }, "TCP e ping...")),
             Ui.Btn("Input lag", () => Host.RunTask(() => { Host.Engine.TweakInputLag(); return null; }, "Input lag...")),
-            Ui.Btn("SSD", () => Host.RunTask(() => { Host.Engine.TweakSsd(); return null; }, "SSD...")),
-            Ui.Btn("Encerrar apps", CloseBackgroundApps)));
+            Ui.Btn("SSD e indexacao", () => Host.RunTask(() => { Host.Engine.TweakSsd(); return null; }, "SSD...")),
+            Ui.Btn("Fechar apps de fundo", CloseBackgroundApps)));
 
-        var all = Card("TUDO DE UMA VEZ", 380);
+        var all = Card("APLICAR TUDO", 380);
         var allBody = BodyOf(all);
         allBody.Children.Add(Ui.Lbl(
-            "Aplicar tudo cria um ponto de restauro, corre todos os modulos e grava o backup.", 11, Ui.Dim));
-        allBody.Children.Add(Ui.Wrap(
-            Ui.Btn("APLICAR TUDO", ApplyAll, primary: true),
-            Ui.Btn("RESTAURAR BACKUP", Revert)));
+            "Cria um ponto de restauro, corre todas as otimizacoes e grava o backup.", 11, Ui.Dim));
+        allBody.Children.Add(Ui.Wrap(Ui.Btn("Aplicar tudo", ApplyAll, primary: true)));
         allBody.Children.Add(Ui.Lbl(
             "Reinicia o PC depois de mexer em kernel, GPU, VBS ou BCD.", 10, Ui.Gold));
+        allBody.Children.Add(Ui.Lbl(
+            "Para voltar aos valores originais, use Backup.", 11, Ui.Dim));
+        allBody.Children.Add(Ui.Wrap(Ui.Btn("Abrir Backup", () => Host.ShowPage("backup"))));
 
         // Desfazer um modulo sem voltar ao backup inteiro.
         var undo = Card("DESFAZER UM MODULO", 420);
@@ -161,19 +165,4 @@ public sealed class OptimizePage : PageBase
         }, "A aplicar otimizacoes...");
     }
 
-    private void Revert()
-    {
-        if (!Host.Store.HasBackup)
-        {
-            Host.Info("Nao ha backup Mago para restaurar.", "Backup");
-            return;
-        }
-        if (!Host.Confirm("Repor os valores guardados no backup Mago?", "Restaurar")) return;
-        Host.RunTask(() =>
-        {
-            Host.Engine.RevertAll();
-            LoadModules();
-            return "Restauro concluido. Reinicia se alteraste BCD/VBS/GPU.";
-        }, "A restaurar backup...");
-    }
 }

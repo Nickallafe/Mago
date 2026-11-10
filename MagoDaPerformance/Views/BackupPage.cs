@@ -18,7 +18,7 @@ public sealed class BackupPage : PageBase
         _info = Ui.Mono("", 11, Ui.Txt);
         body.Children.Add(_info);
         body.Children.Add(Ui.Wrap(
-            Ui.Btn("CAPTURAR AGORA", Capture, primary: true),
+            Ui.Btn("Capturar agora", Capture, primary: true),
             Ui.Btn("Restaurar backup Mago", Restore),
             Ui.Btn("Exportar", Export),
             Ui.Btn("Importar", Import),

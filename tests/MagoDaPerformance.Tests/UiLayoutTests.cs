@@ -61,13 +61,24 @@ public class UiLayoutTests
     private const double PageHeight = 800;
 
     [Fact]
-    public void Painel_tem_diagnostico_e_medicao()
+    public void Painel_tem_diagnostico()
     {
         UiThread.Run(() =>
         {
             using var window = new TestWindow();
             AssertPage(window.Window, "painel", "DIAGNOSTICO RAPIDO");
-            AssertPage(window.Window, "painel", "MEDIR ANTES / DEPOIS");
+        });
+    }
+
+    [Fact]
+    public void Jogos_tem_fps_e_medicao()
+    {
+        UiThread.Run(() =>
+        {
+            using var window = new TestWindow();
+            // FPS, overlay e antes/depois sairam do painel: vivem na pagina Jogos.
+            AssertPage(window.Window, "jogos", "FPS DO JOGO");
+            AssertPage(window.Window, "jogos", "MEDIR ANTES / DEPOIS");
         });
     }
 
@@ -100,7 +111,31 @@ public class UiLayoutTests
             // 1366x768 e' o pior caso comum; a area util real fica abaixo de 900 DIPs.
             AssertNoOverflow(window.Window, "painel", 900);
             AssertNoOverflow(window.Window, "otimizar", 900);
+            AssertNoOverflow(window.Window, "jogos", 900);
             AssertNoOverflow(window.Window, "rede", 900);
+            AssertNoOverflow(window.Window, "ferramentas", 900);
+        });
+    }
+
+    /// <summary>
+    /// A mesma acao em duas paginas diferentes faz duvidar de qual e' a certa. Cada uma
+    /// tem de ter um unico dono.
+    /// </summary>
+    [Fact]
+    public void Acoes_repetidas_tem_uma_so_pagina()
+    {
+        UiThread.Run(() =>
+        {
+            using var window = new TestWindow();
+            var keys = new[] { "painel", "otimizar", "jogos", "rede", "apps", "backup", "bios", "ferramentas" };
+            foreach (var action in new[] { "Limpar cache DNS", "Reiniciar Explorer", "Restaurar backup Mago" })
+            {
+                var pages = keys
+                    .Where(key => VisibleTexts(Show(window.Window, key)).Any(t => t == action))
+                    .ToList();
+                Assert.True(pages.Count == 1,
+                    $"'{action}' aparece em {pages.Count} paginas: {string.Join(", ", pages)}");
+            }
         });
     }
 

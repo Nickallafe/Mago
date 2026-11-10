@@ -21,7 +21,8 @@ public sealed class NetworkPage : PageBase
     private DateTime _lastAuto = DateTime.MinValue;
 
     public NetworkPage(MainWindow host) : base(host, "Rede",
-        "Ping, velocidade e DNS. A analise basica comeca sozinha ao abrir esta pagina.")
+        "Veja a ligacao atual, meca ping e velocidade e escolha o DNS mais rapido. " +
+        "A leitura basica comeca sozinha ao abrir a pagina.")
     {
         var infoCard = Card("ADAPTADOR", 380);
         var infoBody = BodyOf(infoCard);
@@ -29,11 +30,11 @@ public sealed class NetworkPage : PageBase
         // Sem margem, o texto de estado encosta nos botoes (visivel na captura de layout).
         _info.Margin = new Thickness(0, 0, 0, 8);
         infoBody.Children.Add(_info);
+        // "Limpar DNS" vive no cartao de DNS: aqui so' se le o adaptador.
         infoBody.Children.Add(Ui.Wrap(
-            Ui.Btn("Analisar de novo", () => AutoAnalyse(force: true), primary: true),
-            Ui.Btn("Limpar DNS", () => Host.Engine.FlushDns())));
+            Ui.Btn("Analisar de novo", () => AutoAnalyse(force: true), primary: true)));
 
-        var testCard = Card("TESTES", 590);
+        var testCard = Card("TESTES DE LIGACAO", 590);
         var testBody = BodyOf(testCard);
         _ping = Ui.Lbl("Ping: a medir...", 12, Ui.Txt);
         _speed = Ui.Lbl("Velocidade: ainda nao medida.", 12, Ui.Txt);
@@ -43,13 +44,13 @@ public sealed class NetworkPage : PageBase
             Ui.Btn("Ping", RunPing),
             Ui.Btn("Velocidade", RunSpeed),
             Ui.Btn("Latencia sob carga", RunBufferbloat),
-            Ui.Btn("TESTE COMPLETO", RunFull)));
+            Ui.Btn("Teste completo", RunFull)));
         testBody.Children.Add(_ping);
         testBody.Children.Add(_speed);
         testBody.Children.Add(_bloat);
         testBody.Children.Add(_diag);
 
-        var dnsCard = Card("DNS - MELHOR RESOLVEDOR", 970);
+        var dnsCard = Card("DNS MAIS RAPIDO", 970);
         var dnsBody = BodyOf(dnsCard);
         dnsBody.Children.Add(Ui.Lbl(
             "Compara Cloudflare, Google, Quad9, OpenDNS, AdGuard e o DNS atual, e aplica o mais rapido.",
@@ -59,10 +60,11 @@ public sealed class NetworkPage : PageBase
         _dnsChoices = Ui.List(120);
         // So aparecem depois do benchmark: antes disso nao ha o que escolher.
         _dnsChoices.Visibility = Visibility.Collapsed;
-        _applyDns = Ui.Btn("APLICAR DNS", ApplyDns, primary: true);
+        _applyDns = Ui.Btn("Aplicar DNS escolhido", ApplyDns, primary: true);
         dnsBody.Children.Add(Ui.Wrap(
-            Ui.Btn("BENCHMARK DNS", RunDnsBenchmark),
-            Ui.Btn("Automatico (DHCP)", ApplyAutoDns)));
+            Ui.Btn("Testar resolvedores", RunDnsBenchmark),
+            Ui.Btn("Limpar cache DNS", () => Host.Engine.FlushDns()),
+            Ui.Btn("Voltar a automatico (DHCP)", ApplyAutoDns)));
         dnsBody.Children.Add(_dnsRanking);
         dnsBody.Children.Add(_dnsStatus);
         dnsBody.Children.Add(_dnsChoices);
@@ -146,7 +148,7 @@ public sealed class NetworkPage : PageBase
         }
 
         if (_results.Count == 0 && route.Dns.Count > 0)
-            _dnsStatus.Text = $"DNS atual: {string.Join(", ", route.Dns)}. Clique em BENCHMARK DNS para comparar.";
+            _dnsStatus.Text = $"DNS atual: {string.Join(", ", route.Dns)}. Clique em Testar resolvedores para comparar.";
     }
 
     private void RunPing()

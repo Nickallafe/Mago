@@ -27,15 +27,19 @@ ficar pronta.
 
 ## Páginas
 
+A barra lateral agrupa as páginas por uso: **Seu PC** (o dia a dia) e
+**Manutenção** (o que se abre de vez em quando).
+
 | Página | O que faz |
 |--------|-----------|
-| **Painel** | Resumo do PC (SO, CPU, GPU, RAM, discos) lido ao abrir, cartão de drivers com alerta de drivers antigos e atualização pelo Windows Update, FPS via PresentMon, **medição antes/depois** (FPS médio, 1% low e p95) e **diagnóstico rápido** (XMP/EXPO, limite térmico, saúde do disco, processos que comem CPU). |
-| **Otimizar** | Perfis Equilibrado/Competitivo e módulos: GPU/HAGS, Windows Gaming, registo multimédia, energia, serviços, temp+DNS, rede, input lag, SSD. |
-| **Rede** | Ao abrir faz pré-análise automática (adaptador, gateway, DNS atuais, link e ping). Botões para ping, download/upload, **latência sob carga (bufferbloat, nota A-F)** e benchmark de resolvedores DNS com troca por `netsh`. |
+| **Início** | Visão geral do PC (SO, CPU, GPU, RAM, discos) lida ao abrir, drivers com alerta de desatualizados e atualização pelo Windows Update, e **diagnóstico rápido** (XMP/EXPO, limite térmico, saúde do disco, processos que comem CPU, teste de carga de 15 s). |
+| **Otimizar** | Perfis Equilibrado/Competitivo, cada otimização aplicada uma a uma (GPU/HAGS, Modo Jogo, multimédia, energia, serviços, temporários e DNS, TCP e ping, input lag, SSD e indexação) e o botão para aplicar tudo. |
+| **Jogos** | Medição de FPS via PresentMon, overlay sempre no topo com opacidade/tamanho e **medição antes/depois** (FPS médio, 1% low e p95). |
+| **Rede** | Ao abrir faz pré-análise automática (adaptador, gateway, DNS atuais, link e ping). Botões para ping, download/upload, **latência sob carga (bufferbloat, nota A-F)** e teste de resolvedores DNS com troca por `netsh`. |
 | **Aplicativos** | Lista Win32 e Store, pesquisa, desinstalação oficial e remoção forçada. |
-| **Backup** | Captura, exportação/importação, restauro e pontos de restauro do Windows. |
+| **Backup** | Captura, exportação/importação, restauro e pontos de restauro do Windows. É a única página que restaura o backup completo. |
 | **BIOS** | Firmware, board, Secure Boot, TPM e atalho ao suporte do fabricante. |
-| **Ferramentas** | Efeitos visuais, cache de shaders, arranque rápido, DNS, Explorer e programas de arranque. |
+| **Ferramentas** | Efeitos visuais, cache de shaders, arranque rápido, reiniciar Explorer, pasta de dados, programas de arranque e atualizações do próprio Mago. |
 
 ## Antes de otimizar
 
@@ -100,7 +104,7 @@ publish\MagoDaPerformance.exe --version
 O app consulta a última release do GitHub **a cada arranque**, descarrega o
 `MagoSetup-*.exe`, instala em silêncio e reabre sozinho. A verificação só
 autualiza uma cópia instalada pelo setup (um `.exe` portátil não instala uma
-segunda cópia). Em **Ferramentas → Atualizações** pode desligar a atualização
+segunda cópia). Em **Ferramentas → Atualizações do Mago** pode desligar a atualização
 automática ou verificar na hora.
 
 ## Assinatura de código (Code signing policy)

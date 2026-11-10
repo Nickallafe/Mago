@@ -161,13 +161,22 @@ public partial class MainWindow : Window
             BorderThickness = new Thickness(0, 0, 1, 0),
         };
         var sideStack = new StackPanel();
-        var nav = new (string Key, string Label)[]
+        // Secoes com titulo: a barra plana de sete itens nao dizia o que era "painel" nem
+        // separava o que se usa todos os dias do que se abre uma vez por mês.
+        var nav = new (string? Section, string Key, string Label)[]
         {
-            ("painel", "PAINEL"), ("otimizar", "OTIMIZAR"), ("rede", "REDE"),
-            ("apps", "APLICATIVOS"), ("backup", "BACKUP"), ("bios", "BIOS"), ("ferramentas", "FERRAMENTAS"),
+            ("SEU PC", "painel", "INICIO"),
+            (null, "otimizar", "OTIMIZAR"),
+            (null, "jogos", "JOGOS"),
+            (null, "rede", "REDE"),
+            ("MANUTENCAO", "apps", "APLICATIVOS"),
+            (null, "backup", "BACKUP"),
+            (null, "bios", "BIOS"),
+            (null, "ferramentas", "FERRAMENTAS"),
         };
-        foreach (var (key, label) in nav)
+        foreach (var (section, key, label) in nav)
         {
+            if (section != null) sideStack.Children.Add(SectionLabel(section));
             var b = new Button
             {
                 Content = label,
@@ -224,6 +233,17 @@ public partial class MainWindow : Window
         return body;
     }
 
+    /// <summary>Titulo de secao da barra lateral (nao e' clicavel).</summary>
+    private static TextBlock SectionLabel(string text) => new()
+    {
+        Text = text,
+        Foreground = Ui.Br(Ui.Dim),
+        FontSize = 9,
+        FontWeight = FontWeights.Bold,
+        Margin = new Thickness(24, 16, 0, 4),
+        Opacity = 0.75,
+    };
+
     private static ControlTemplate FlatTemplate()
     {
         var border = new FrameworkElementFactory(typeof(Border));
@@ -242,6 +262,7 @@ public partial class MainWindow : Window
         _panel = new PanelPage(this);
         _pages["painel"] = _panel;
         _pages["otimizar"] = new OptimizePage(this);
+        _pages["jogos"] = new GamesPage(this);
         _pages["rede"] = new NetworkPage(this);
         _pages["apps"] = new AppsPage(this);
         _pages["backup"] = new BackupPage(this);
@@ -252,6 +273,8 @@ public partial class MainWindow : Window
     /// <summary>Aceita as chaves internas e os nomes que aparecem na barra lateral.</summary>
     private static string ResolvePage(string key) => key switch
     {
+        "inicio" or "home" or "resumo" or "visao" => "painel",
+        "jogos" or "fps" or "games" => "jogos",
         "aplicativos" or "app" or "programas" => "apps",
         "backup" or "restauro" or "restore" => "backup",
         "bios" or "firmware" => "bios",
