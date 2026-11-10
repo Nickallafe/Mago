@@ -28,9 +28,9 @@ jobs:
     runs-on: windows-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/setup-dotnet@v6
         with:
           dotnet-version: "10.0.x"
 
@@ -61,7 +61,7 @@ jobs:
 
       - name: Upload do exe
         id: app-unsigned
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: app-unsigned
           path: app-unsigned.zip
@@ -98,7 +98,7 @@ jobs:
 
       - name: Upload do instalador
         id: setup-unsigned
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: setup-unsigned
           path: dist/MagoSetup-${{ env.VERSION }}.exe
