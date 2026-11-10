@@ -127,7 +127,7 @@ public class UiLayoutTests
         UiThread.Run(() =>
         {
             using var window = new TestWindow();
-            var keys = new[] { "painel", "otimizar", "jogos", "rede", "apps", "backup", "bios", "ferramentas" };
+            var keys = new[] { "painel", "otimizar", "jogos", "rede", "apps", "backup", "ferramentas" };
             foreach (var action in new[] { "Limpar cache DNS", "Reiniciar Explorer", "Restaurar backup Mago" })
             {
                 var pages = keys
@@ -136,6 +136,21 @@ public class UiLayoutTests
                 Assert.True(pages.Count == 1,
                     $"'{action}' aparece em {pages.Count} paginas: {string.Join(", ", pages)}");
             }
+        });
+    }
+
+    /// <summary>
+    /// O BIOS deixou de ser uma pagina propria: a chave antiga tem de continuar a abrir
+    /// a visao geral (onde ficou o cartao do firmware) e nao uma pagina vazia.
+    /// </summary>
+    [Fact]
+    public void Bios_abre_a_visao_geral_com_o_cartao_do_firmware()
+    {
+        UiThread.Run(() =>
+        {
+            using var window = new TestWindow();
+            AssertPage(window.Window, "bios", "BIOS E FIRMWARE");
+            AssertPage(window.Window, "firmware", "Secure Boot");
         });
     }
 

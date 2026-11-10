@@ -171,7 +171,6 @@ public partial class MainWindow : Window
             (null, "rede", "REDE"),
             ("MANUTENCAO", "apps", "APLICATIVOS"),
             (null, "backup", "BACKUP"),
-            (null, "bios", "BIOS"),
             (null, "ferramentas", "FERRAMENTAS"),
         };
         foreach (var (section, key, label) in nav)
@@ -266,7 +265,6 @@ public partial class MainWindow : Window
         _pages["rede"] = new NetworkPage(this);
         _pages["apps"] = new AppsPage(this);
         _pages["backup"] = new BackupPage(this);
-        _pages["bios"] = new BiosPage(this);
         _pages["ferramentas"] = new ToolsPage(this);
     }
 
@@ -277,7 +275,7 @@ public partial class MainWindow : Window
         "jogos" or "fps" or "games" => "jogos",
         "aplicativos" or "app" or "programas" => "apps",
         "backup" or "restauro" or "restore" => "backup",
-        "bios" or "firmware" => "bios",
+        "bios" or "firmware" => "painel",
         "ferramentas" or "tools" => "ferramentas",
         "otimizar" or "otimizacoes" or "optimize" => "otimizar",
         "rede" or "network" => "rede",

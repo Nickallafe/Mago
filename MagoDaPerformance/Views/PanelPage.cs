@@ -10,7 +10,10 @@ public sealed class PanelPage : PageBase
     private readonly TextBlock _drvStatus;
     private readonly ListBox _drvList;
     private readonly TextBlock _ramLine, _cpuLine, _diskLine;
+    private readonly TextBlock _biosLeft, _biosRight;
     private readonly ListBox _procList;
+    private Dictionary<string, string?>? _biosInfo;
+    private bool _biosLoaded, _biosLoading;
     private List<ProcessLoad> _procData = new();
     private bool _diagLoaded, _diagLoading;
 
@@ -39,6 +42,29 @@ public sealed class PanelPage : PageBase
 
         pcBody.Children.Add(Ui.Wrap(
             Ui.Btn("Atualizar informacoes", () => Host.RefreshHardware(), primary: true)));
+
+        // ---------- firmware ----------
+        // A BIOS e' a identidade da maquina (placa, UEFI, Secure Boot, TPM): cabe na
+        // visao geral e deixa de justificar uma setima entrada no menu.
+        var bios = Card("BIOS E FIRMWARE", 970);
+        var biosBody = BodyOf(bios);
+        biosBody.Children.Add(Ui.Lbl(
+            "Placa-mae, versao do firmware, Secure Boot e TPM. Atualizacoes vem do fabricante, nao do Windows Update.",
+            11, Ui.Dim));
+        var biosGrid = new Grid { Margin = new Thickness(0, 8, 0, 4) };
+        biosGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        biosGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        _biosLeft = Ui.Mono("A analisar firmware...", 11, Ui.Txt);
+        _biosRight = Ui.Mono("", 11, Ui.Txt);
+        _biosRight.Margin = new Thickness(0, 0, 20, 0);
+        Grid.SetColumn(_biosLeft, 0);
+        Grid.SetColumn(_biosRight, 1);
+        biosGrid.Children.Add(_biosLeft);
+        biosGrid.Children.Add(_biosRight);
+        biosBody.Children.Add(biosGrid);
+        biosBody.Children.Add(Ui.Wrap(
+            Ui.Btn("Reler firmware", () => AnalyzeBios(force: true), primary: true),
+            Ui.Btn("Suporte do fabricante", OpenVendorSupport)));
 
         // ---------- drivers ----------
         var drv = Card("DRIVERS E WINDOWS UPDATE", 970);
@@ -77,6 +103,7 @@ public sealed class PanelPage : PageBase
             Ui.Btn("Teste de carga (15 s)", () => Host.RunTask(() => Host.Engine.StressTest(15), "Teste de carga..."))));
 
         Add(pc);
+        Add(bios);
         Add(drv);
         Add(diagCard);
     }
@@ -234,7 +261,63 @@ public sealed class PanelPage : PageBase
         }, "A instalar atualizacoes de driver...");
     }
 
-    public override void OnShown() => LoadDiagnostics();
+    public override void OnShown()
+    {
+        LoadDiagnostics();
+        AnalyzeBios();
+    }
+
+    // ---------- BIOS e firmware ----------
+
+    /// <summary>Uma so' leitura; o botao "Reler firmware" forca outra.</summary>
+    private void AnalyzeBios(bool force = false)
+    {
+        if (_biosLoading || (_biosLoaded && !force)) return;
+        _biosLoading = true;
+        _biosLeft.Text = "A analisar firmware...";
+        _biosRight.Text = "";
+
+        System.Threading.Tasks.Task.Run(() =>
+        {
+            Dictionary<string, string?> info;
+            string text;
+            try
+            {
+                info = SystemInfo.Bios();
+                text = SystemInfo.BiosText(info);
+            }
+            catch (Exception ex)
+            {
+                Log.Write("BIOS: " + ex.Message, "ERRO");
+                info = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
+                text = "Nao foi possivel ler o firmware (" + ex.Message + ")";
+            }
+
+            Host.Dispatcher.Invoke(() =>
+            {
+                _biosInfo = info;
+                var lines = text.Split('\n');
+                var half = (lines.Length + 1) / 2;
+                _biosLeft.Text = string.Join("\n", lines.Take(half));
+                _biosRight.Text = string.Join("\n", lines.Skip(half));
+                _biosLoaded = true;
+                _biosLoading = false;
+            });
+        });
+    }
+
+    private void OpenVendorSupport()
+    {
+        if (_biosInfo == null)
+        {
+            Host.Info("Espere a leitura do firmware terminar.", "BIOS");
+            return;
+        }
+
+        var url = SystemInfo.VendorSupportUrl(_biosInfo);
+        Log.Write("A abrir suporte do fabricante: " + url);
+        Proc.OpenUri(url);
+    }
 
     // ---------- diagnostico rapido ----------
 

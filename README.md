@@ -32,13 +32,12 @@ A barra lateral agrupa as páginas por uso: **Seu PC** (o dia a dia) e
 
 | Página | O que faz |
 |--------|-----------|
-| **Início** | Visão geral do PC (SO, CPU, GPU, RAM, discos) lida ao abrir, drivers com alerta de desatualizados e atualização pelo Windows Update, e **diagnóstico rápido** (XMP/EXPO, limite térmico, saúde do disco, processos que comem CPU, teste de carga de 15 s). |
+| **Início** | Visão geral do PC (SO, CPU, GPU, RAM, discos) lida ao abrir, firmware (board, UEFI, Secure Boot, TPM) com atalho ao suporte do fabricante, drivers com alerta de desatualizados e atualização pelo Windows Update, e **diagnóstico rápido** (XMP/EXPO, limite térmico, saúde do disco, processos que comem CPU, teste de carga de 15 s). |
 | **Otimizar** | Perfis Equilibrado/Competitivo, cada otimização aplicada uma a uma (GPU/HAGS, Modo Jogo, multimédia, energia, serviços, temporários e DNS, TCP e ping, input lag, SSD e indexação) e o botão para aplicar tudo. |
 | **Jogos** | Medição de FPS via PresentMon, overlay sempre no topo com opacidade/tamanho e **medição antes/depois** (FPS médio, 1% low e p95). |
 | **Rede** | Ao abrir faz pré-análise automática (adaptador, gateway, DNS atuais, link e ping). Botões para ping, download/upload, **latência sob carga (bufferbloat, nota A-F)** e teste de resolvedores DNS com troca por `netsh`. |
 | **Aplicativos** | Lista Win32 e Store, pesquisa, desinstalação oficial e remoção forçada. |
 | **Backup** | Captura, exportação/importação, restauro e pontos de restauro do Windows. É a única página que restaura o backup completo. |
-| **BIOS** | Firmware, board, Secure Boot, TPM e atalho ao suporte do fabricante. |
 | **Ferramentas** | Efeitos visuais, cache de shaders, arranque rápido, reiniciar Explorer, pasta de dados, programas de arranque e atualizações do próprio Mago. |
 
 ## Antes de otimizar
