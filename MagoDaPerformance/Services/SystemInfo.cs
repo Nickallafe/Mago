@@ -39,6 +39,34 @@ public static class SystemInfo
     [DllImport("kernel32.dll", SetLastError = true)]
     private static extern bool GlobalMemoryStatusEx(ref MemStatus status);
 
+    [StructLayout(LayoutKind.Sequential)]
+    private struct PowerStatus
+    {
+        public byte ACLineStatus;
+        public byte BatteryFlag;
+        public byte BatteryLifePercent;
+        public byte SystemStatusFlag;
+        public uint BatteryLifeTime;
+        public uint BatteryFullLifeTime;
+    }
+
+    [DllImport("kernel32.dll")]
+    private static extern bool GetSystemPowerStatus(out PowerStatus status);
+
+    /// <summary>
+    /// Portatil = tem bateria. Decisoes que so fazem sentido num desktop (desligar
+    /// hibernacao, cortar gestao de energia) tem de ser bloqueadas aqui.
+    /// </summary>
+    public static bool HasBattery()
+    {
+        try
+        {
+            if (!GetSystemPowerStatus(out var status)) return false;
+            return status.BatteryFlag != 128 && status.BatteryFlag != 255; // 128=sem bateria, 255=desconhecido
+        }
+        catch { return false; }
+    }
+
     private static ulong ToU64(FileTime t) => ((ulong)t.High << 32) | t.Low;
 
     private static ulong _lastIdle, _lastKernel, _lastUser;

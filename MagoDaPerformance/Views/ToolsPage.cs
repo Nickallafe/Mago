@@ -16,7 +16,7 @@ public sealed class ToolsPage : PageBase
         var utilsBody = BodyOf(utils);
         utilsBody.Children.Add(Ui.Wrap(
             Ui.Btn("Efeitos visuais: desempenho", () => Host.RunTask(() => { Host.Engine.VisualEffectsPerf(); return null; }, "Efeitos visuais...")),
-            Ui.Btn("Limpar cache de shaders", () => Host.RunTask(() => { Host.Engine.CleanShaderCache(); return null; }, "A limpar shaders...")),
+            Ui.Btn("Limpar cache de shaders", ClearShaderCache),
             Ui.Btn("Desativar arranque rapido", () => Host.RunTask(() => { Host.Engine.DisableFastStartup(); return "Entra em vigor no proximo desligar."; }, "Arranque rapido...")),
             Ui.Btn("Limpar DNS", () => Host.Engine.FlushDns()),
             Ui.Btn("Reiniciar Explorer", () =>
@@ -55,6 +55,19 @@ public sealed class ToolsPage : PageBase
 
         Add(Row(utils, startupCard));
         Add(Row(updatesCard));
+    }
+
+    /// <summary>A cache volta a ser compilada pelos jogos: o primeiro arranque fica mais lento.</summary>
+    private void ClearShaderCache()
+    {
+        if (!Host.Confirm(
+                "Apagar as caches de shaders de GPU?\n\n" +
+                "O primeiro arranque de cada jogo depois disto fica mais lento enquanto compila os " +
+                "shaders outra vez. Nao aumenta FPS.",
+                "Cache de shaders"))
+            return;
+
+        Host.RunTask(() => { Host.Engine.CleanShaderCache(); return null; }, "A limpar shaders...");
     }
 
     private void SetAutoUpdate(bool enabled)

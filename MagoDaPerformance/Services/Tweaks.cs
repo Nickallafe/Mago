@@ -9,7 +9,7 @@ public sealed class TweakEngine
     public static readonly (string Key, string Name)[] TrackedRegs =
     {
         (@"HKLM\SYSTEM\CurrentControlSet\Control\GraphicsDrivers", "HwSchMode"),
-        (@"HKLM\SYSTEM\CurrentControlSet\Control\GraphicsDrivers", "TdrLevel"),
+        (@"HKLM\SYSTEM\CurrentControlSet\Control\GraphicsDrivers", "TdrDelay"),
         (@"HKLM\SYSTEM\CurrentControlSet\Services\nvlddmkm\Global\NVTweak", "DisplayPowerSaving"),
         (@"HKLM\SYSTEM\CurrentControlSet\Control\PriorityControl", "Win32PrioritySeparation"),
         (@"HKCU\Software\Microsoft\GameBar", "AutoGameModeEnabled"),
@@ -265,8 +265,11 @@ public sealed class TweakEngine
         SetReg(@"HKLM\SYSTEM\CurrentControlSet\Control\GraphicsDrivers", "HwSchMode", "REG_DWORD", "2");
         if (Competitive)
         {
-            Log.Write("Competitivo: TdrLevel=0.", "AVISO");
-            SetReg(@"HKLM\SYSTEM\CurrentControlSet\Control\GraphicsDrivers", "TdrLevel", "REG_DWORD", "0");
+            // TdrDelay em vez de TdrLevel=0: o TDR continua a recuperar a GPU, so' espera
+            // 10 s em vez de 2 s. Desligar o watchdog (TdrLevel=0) congela o PC inteiro num
+            // crash de driver, o que e' pior do que o reset que se queria evitar.
+            Log.Write("Competitivo: TdrDelay=10 (watchdog da GPU mantido).");
+            SetReg(@"HKLM\SYSTEM\CurrentControlSet\Control\GraphicsDrivers", "TdrDelay", "REG_DWORD", "10");
         }
         if (NvidiaPresent)
             SetReg(@"HKLM\SYSTEM\CurrentControlSet\Services\nvlddmkm\Global\NVTweak", "DisplayPowerSaving", "REG_DWORD", "0");
@@ -281,6 +284,8 @@ public sealed class TweakEngine
         SetReg(@"HKCU\Software\Microsoft\GameBar", "AllowAutoGameMode", "REG_DWORD", "1");
         if (!Competitive) return;
 
+        // Seguranca: isto baixa a protecao do sistema e o Windows pode voltar a ligar sozinho.
+        Log.Write("Aviso: desligar VBS/HVCI baixa a protecao do Windows; nao garante ganho de FPS.", "AVISO");
         SetReg(@"HKLM\SYSTEM\CurrentControlSet\Control\DeviceGuard", "EnableVirtualizationBasedSecurity", "REG_DWORD", "0");
         SetReg(@"HKLM\SYSTEM\CurrentControlSet\Control\DeviceGuard\Scenarios\HypervisorEnforcedCodeIntegrity", "Enabled", "REG_DWORD", "0");
         if (Backup.Data.Touched.MemoryCompressionWasEnabled == null)
@@ -377,33 +382,61 @@ public sealed class TweakEngine
         {
             Log.Write("HDD detetado: SysMain/WSearch mantidos.", "AVISO");
         }
+        if (targets.Contains("WSearch"))
+            Log.Write("Aviso: sem WSearch a pesquisa do Menu Iniciar e do Explorador fica limitada.", "AVISO");
         foreach (var svc in targets) DisableService(svc);
     }
 
     /// <summary>Limpa ficheiros temporarios e a cache DNS. Nao liberta RAM.</summary>
-    public void CleanTempAndDns()
+    /// <summary>
+    /// Limpa ficheiros temporarios e a cache DNS. Nao liberta RAM.
+    /// Ficheiros em uso (instaladores a correr, apps abertas) sao ignorados em vez de
+    /// forcados, e o total libertado e' devolvido para a UI poder mostrar um numero real.
+    /// </summary>
+    public string CleanTempAndDns()
     {
         var windir = Environment.GetFolderPath(Environment.SpecialFolder.Windows);
+        // Windows\Temp e' partilhado com instaladores: ficheiros recentes ficam de fora.
         var folders = new[]
         {
-            Path.Combine(windir, "Temp"),
-            Environment.GetEnvironmentVariable("TEMP"),
-            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Temp"),
-        }.Where(f => !string.IsNullOrWhiteSpace(f)).Distinct().ToList();
+            (Path: Path.Combine(windir, "Temp"), Recent: true),
+            (Path: Environment.GetEnvironmentVariable("TEMP") ?? "", Recent: false),
+            (Path: Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Temp"), Recent: false),
+        }.Where(f => !string.IsNullOrWhiteSpace(f.Path)).DistinctBy(f => f.Path, StringComparer.OrdinalIgnoreCase).ToList();
 
-        foreach (var folder in folders)
+        var recentLimit = DateTime.UtcNow.AddMinutes(-15);
+        long freed = 0;
+        var skipped = 0;
+
+        foreach (var (folder, skipRecent) in folders)
         {
             if (!Directory.Exists(folder)) continue;
             try
             {
-                foreach (var file in Directory.EnumerateFiles(folder!, "*", SearchOption.AllDirectories))
-                    try { File.Delete(file); } catch { }
+                foreach (var file in Directory.EnumerateFiles(folder, "*", SearchOption.AllDirectories))
+                {
+                    try
+                    {
+                        var info = new FileInfo(file);
+                        if (skipRecent && info.LastWriteTimeUtc > recentLimit) continue;
+                        var size = info.Length;
+                        info.Delete();
+                        freed += size;
+                    }
+                    catch { skipped++; }
+                }
                 Log.Write("Limpeza pedida: " + folder);
             }
             catch (Exception ex) { Log.Write("Falha a limpar " + folder + ": " + ex.Message, "AVISO"); }
         }
         Proc.Run("ipconfig.exe", "/flushdns");
-        Log.Write("Temp + DNS: concluido.");
+
+        var mb = freed / (1024.0 * 1024.0);
+        var summary = $"{mb:0.0} MB libertados em temporarios" +
+                      (skipped > 0 ? $"; {skipped} ficheiro(s) em uso ignorado(s)" : "") +
+                      ". DNS limpo.";
+        Log.Write("Temp + DNS: " + summary);
+        return summary;
     }
 
     public void TweakNetwork()
@@ -456,9 +489,15 @@ public sealed class TweakEngine
         {
             SetReg(@"HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management\PrefetchParameters",
                 "EnablePrefetcher", "REG_DWORD", "0");
-            if (Backup.Data.Touched.HibernateWasEnabled == null)
-                Backup.Data.Touched.HibernateWasEnabled = HibernationOn();
-            Proc.Run("powercfg.exe", "-h off");
+            // Num portatil, desligar a hibernacao quebra a suspensao e o arranque rapido.
+            if (SystemInfo.HasBattery())
+                Log.Write("Portatil detetado: hibernacao mantida (desligar quebra suspensao/arranque rapido).", "AVISO");
+            else
+            {
+                if (Backup.Data.Touched.HibernateWasEnabled == null)
+                    Backup.Data.Touched.HibernateWasEnabled = HibernationOn();
+                Proc.Run("powercfg.exe", "-h off");
+            }
         }
         Backup.Data.Touched.Trim = true;
         if (!HasHdd) Backup.Data.Touched.DefragTask = true;
@@ -466,14 +505,74 @@ public sealed class TweakEngine
         Log.Write("SSD: modulo concluido.");
     }
 
-    public void KillBackground()
+    /// <summary>Apps de fundo que costumam competir com o jogo; fechar so' com pedido gracioso.</summary>
+    public static readonly string[] BackgroundApps =
     {
-        var apps = new[] { "chrome.exe", "msedge.exe", "opera.exe", "firefox.exe", "spotify.exe", "OneDrive.exe", "epicgameslauncher.exe", "steamwebhelper.exe" };
-        foreach (var app in apps)
+        "chrome.exe", "msedge.exe", "opera.exe", "firefox.exe", "spotify.exe",
+        "OneDrive.exe", "epicgameslauncher.exe", "steamwebhelper.exe",
+    };
+
+    /// <summary>Quais destes apps estao a correr agora (para a UI pedir confirmacao com nomes).</summary>
+    public List<string> RunningBackgroundApps()
+    {
+        var running = new List<string>();
+        foreach (var app in BackgroundApps)
         {
-            var (ok, _) = Proc.Run("taskkill.exe", "/f /im " + app + " /t", 20000);
-            Log.Write((ok ? "Encerrado: " : "Ausente: ") + app);
+            Process[] list;
+            try { list = Process.GetProcessesByName(Path.GetFileNameWithoutExtension(app)); }
+            catch { continue; }
+            try { if (list.Length > 0) running.Add(app); }
+            finally { foreach (var p in list) p.Dispose(); }
         }
+        return running;
+    }
+
+    /// <summary>
+    /// Fecha os apps de fundo pedindo o fecho normal (CloseMainWindow), nunca com /f.
+    /// Quem tem trabalho por guardar recusa e fica aberto, em vez de perder dados.
+    /// </summary>
+    public string CloseBackground(int waitMs = 4000)
+    {
+        var closed = new List<string>();
+        var kept = new List<string>();
+
+        foreach (var app in BackgroundApps)
+        {
+            Process[] list;
+            try { list = Process.GetProcessesByName(Path.GetFileNameWithoutExtension(app)); }
+            catch { continue; }
+            if (list.Length == 0) continue;
+
+            foreach (var p in list)
+            {
+                try { if (!p.HasExited && p.MainWindowHandle != IntPtr.Zero) p.CloseMainWindow(); }
+                catch { }
+            }
+
+            var deadline = Environment.TickCount64 + waitMs;
+            bool allGone;
+            do
+            {
+                allGone = true;
+                foreach (var p in list)
+                    try { if (!p.HasExited) { allGone = false; break; } }
+                    catch { }
+                if (allGone) break;
+                Thread.Sleep(150);
+            } while (Environment.TickCount64 < deadline);
+
+            foreach (var p in list) p.Dispose();
+            if (allGone) closed.Add(app);
+            else kept.Add(app);
+        }
+
+        if (closed.Count > 0) Log.Write("Apps fechados: " + string.Join(", ", closed));
+        if (kept.Count > 0) Log.Write("Ainda abertos (pedido de fecho recusado): " + string.Join(", ", kept), "AVISO");
+
+        return kept.Count == 0
+            ? (closed.Count == 0 ? "Nenhum app de fundo estava a correr." : "Fechados: " + string.Join(", ", closed) + ".")
+            : $"Fechados: {(closed.Count == 0 ? "nenhum" : string.Join(", ", closed))}. " +
+              $"Continuam abertos (tem trabalho por guardar): {string.Join(", ", kept)}.";
     }
 
     public void ApplyAll(Action<string>? progress = null)
@@ -492,7 +591,7 @@ public sealed class TweakEngine
             Step("Registo multimedia", TweakReg);
             Step("Plano de energia", TweakPower);
             Step("Servicos", TweakServices);
-            Step("Temp e DNS", CleanTempAndDns);
+            Step("Temp e DNS", () => CleanTempAndDns());
             Step("Rede", TweakNetwork);
             Step("Input lag", TweakInputLag);
             Step("SSD", TweakSsd);

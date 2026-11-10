@@ -23,7 +23,7 @@ public sealed class OptimizePage : PageBase
         };
         _competitive = new RadioButton
         {
-            Content = "Competitivo - VBS, timers e TDR agressivos",
+            Content = "Competitivo - timers e TDR mais tolerantes",
             Foreground = Ui.Br(Ui.Txt),
             Margin = new Thickness(0, 4, 0, 8),
         };
@@ -42,15 +42,11 @@ public sealed class OptimizePage : PageBase
             Ui.Btn("Registo multimedia", () => Host.RunTask(() => { Host.Engine.TweakReg(); return null; }, "Registo...")),
             Ui.Btn("Plano de energia", () => Host.RunTask(() => { Host.Engine.TweakPower(); return null; }, "Energia...")),
             Ui.Btn("Servicos", () => Host.RunTask(() => { Host.Engine.TweakServices(); return null; }, "Servicos...")),
-            Ui.Btn("Temp + DNS", () => Host.RunTask(() => { Host.Engine.CleanTempAndDns(); return null; }, "Limpeza...")),
+            Ui.Btn("Temp + DNS", () => Host.RunTask(() => Host.Engine.CleanTempAndDns(), "Limpeza...")),
             Ui.Btn("Rede", () => Host.RunTask(() => { Host.Engine.TweakNetwork(); return null; }, "Rede...")),
             Ui.Btn("Input lag", () => Host.RunTask(() => { Host.Engine.TweakInputLag(); return null; }, "Input lag...")),
             Ui.Btn("SSD", () => Host.RunTask(() => { Host.Engine.TweakSsd(); return null; }, "SSD...")),
-            Ui.Btn("Encerrar apps", () =>
-            {
-                if (Host.Confirm("Fecha browsers, Spotify, OneDrive, Epic e steamwebhelper. Continuar?", "Encerrar apps"))
-                    Host.RunTask(() => { Host.Engine.KillBackground(); return null; }, "A encerrar apps...");
-            })));
+            Ui.Btn("Encerrar apps", CloseBackgroundApps)));
 
         var all = Card("TUDO DE UMA VEZ", 380);
         var allBody = BodyOf(all);
@@ -72,14 +68,40 @@ public sealed class OptimizePage : PageBase
     {
         Host.Engine.Competitive = competitive;
         _hint.Text = competitive
-            ? "Perfil atual: Competitivo (SysMain/WSearch desativados em disco SSD)."
+            ? "Competitivo: desliga VBS/HVCI (baixa a seguranca) e, em SSD, SysMain/WSearch. " +
+              "O watchdog da GPU continua ligado, so' com 10 s de tolerancia."
             : "Perfil atual: Equilibrado.";
+    }
+
+    /// <summary>
+    /// Fecha apps de fundo pedindo o fecho normal: o utilizador ve' exatamente quais estao
+    /// a correr e quem tem trabalho por guardar fica aberto.
+    /// </summary>
+    private void CloseBackgroundApps()
+    {
+        var running = Host.Engine.RunningBackgroundApps();
+        if (running.Count == 0)
+        {
+            Host.Info("Nenhum dos apps de fundo conhecidos esta a correr.", "Encerrar apps");
+            return;
+        }
+
+        var message = "A correr agora:\n\n  " + string.Join("\n  ", running) +
+                      "\n\nVou pedir o fecho normal a cada um. Quem tiver trabalho por guardar recusa e " +
+                      "fica aberto (nao uso terminacao forcada). Continuar?";
+        if (!Host.Confirm(message, "Encerrar apps")) return;
+
+        Host.RunTask(() => Host.Engine.CloseBackground(), "A encerrar apps...");
     }
 
     private void ApplyAll()
     {
         var message = Host.Engine.Competitive
-            ? "Perfil Competitivo altera VBS, timers e TDR. Continuar?"
+            ? "Perfil Competitivo:\n\n" +
+              "- desliga VBS/HVCI (baixa a protecao do Windows e pode ser reativado sozinho)\n" +
+              "- em SSD, desliga SysMain e a indexacao da pesquisa\n" +
+              "- tolerancia de 10 s no watchdog da GPU (continua a recuperar de crashes)\n\n" +
+              "Cria backup e ponto de restauro antes. Continuar?"
             : "Aplicar o perfil Equilibrado com backup e ponto de restauro?";
         if (!Host.Confirm(message, "Aplicar tudo")) return;
 
