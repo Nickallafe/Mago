@@ -1,5 +1,4 @@
 using System.Diagnostics;
-using System.Globalization;
 using System.IO.Compression;
 using System.Net.Http;
 using System.Text.Json;
@@ -10,21 +9,18 @@ namespace MagoDaPerformance;
 public sealed class FpsMonitor : IDisposable
 {
     private const int PublishIntervalMs = 200;   // 5 atualizacoes/s chegam para a UI
-    private const int WindowSize = 120;
 
     private readonly object _lock = new();
-    private readonly List<double> _window = new();
-    private readonly List<double> _all = new();
+    private readonly FrameStats _stats = new();
     private Process? _process;
     private Thread? _reader;
     private long _lastPublish;
     private volatile bool _running;
     private volatile string _lastError = "";
-    private Dictionary<string, int>? _header;
 
-    public double CurrentFps { get; private set; }
-    public double AverageFps { get; private set; }
-    public int Samples { get; private set; }
+    public double CurrentFps => _stats.CurrentFps;
+    public double AverageFps => _stats.AverageFps;
+    public int Samples => _stats.Samples;
     public bool Running => _running;
 
     public event Action<double, double, int>? Updated;
@@ -184,12 +180,9 @@ public sealed class FpsMonitor : IDisposable
         {
             lock (_lock)
             {
-                _window.Clear();
-                _all.Clear();
-                _header = null;
+                _stats.Reset();
+                _stats.ClearHeader();
             }
-            CurrentFps = AverageFps = 0;
-            Samples = 0;
             _lastPublish = 0;
             _lastError = "";
 
@@ -309,44 +302,20 @@ public sealed class FpsMonitor : IDisposable
     {
         try
         {
-            var row = SplitCsv(line);
-            if (row.Count == 0) return;
-            if (row[0].Trim().Equals("Application", StringComparison.OrdinalIgnoreCase))
-            {
-                var header = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
-                for (var i = 0; i < row.Count; i++) header[row[i].Trim()] = i;
-                _header = header;
-                return;
-            }
-            if (_header == null) return;
-
-            // PresentMon 2.3.1+ renomeou FrameTime; MsBetweenPresents existe em todas as versoes 2.x.
-            var index = -1;
-            foreach (var column in new[] { "FrameTime", "MsBetweenPresents", "MsBetweenAppStart" })
-                if (_header.TryGetValue(column, out var col) && col < row.Count) { index = col; break; }
-            if (index < 0) return;
-
-            if (!double.TryParse(row[index], NumberStyles.Float, CultureInfo.InvariantCulture, out var frameTime)) return;
-            if (!double.IsFinite(frameTime) || frameTime < 0.1 || frameTime > 1000) return;
-
             double current, average;
             int samples;
             lock (_lock)
             {
-                _all.Add(frameTime);
-                _window.Add(frameTime);
-                if (_window.Count > WindowSize) _window.RemoveAt(0);
-                samples = _all.Count;
-                Samples = samples;
-                current = _window.Count * 1000.0 / _window.Sum();
-                average = _all.Count * 1000.0 / _all.Sum();
-                CurrentFps = current;
-                AverageFps = average;
+                // Toda a matematica vive no FrameStats (testado sem PresentMon).
+                if (!_stats.Feed(SplitCsv(line))) return;
+                current = _stats.CurrentFps;
+                average = _stats.AverageFps;
+                samples = _stats.Samples;
             }
 
             // Publicar a cada frame saturava a thread da UI (200+ Invoke/s). 5 Hz chega e sobra.
             var now = Environment.TickCount64;
-            if (Samples > 1 && now - _lastPublish < PublishIntervalMs) return;
+            if (samples > 1 && now - _lastPublish < PublishIntervalMs) return;
             _lastPublish = now;
             Updated?.Invoke(current, average, samples);
         }
@@ -385,15 +354,13 @@ public sealed class FpsMonitor : IDisposable
         catch { }
         try { _process?.Dispose(); } catch { }
         _process = null;
-        lock (_lock) _header = null;
+        lock (_lock) _stats.ClearHeader();
         if (wasRunning) Log.Write("Captura FPS parada.");
     }
 
     public void Reset()
     {
-        lock (_lock) { _window.Clear(); _all.Clear(); }
-        CurrentFps = AverageFps = 0;
-        Samples = 0;
+        lock (_lock) _stats.Reset();
         _lastPublish = 0;
         Updated?.Invoke(0, 0, 0);
     }
