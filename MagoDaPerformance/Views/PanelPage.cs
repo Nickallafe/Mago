@@ -123,10 +123,19 @@ public sealed class PanelPage : PageBase
         };
         size.AddHandler(Thumb.DragCompletedEvent, new DragCompletedEventHandler((_, _) => Host.Settings.Save()));
 
+        // Os sliders refletem o reset (ValueChanged aplica e grava por cima do padrao).
+        void ResetOverlay()
+        {
+            Host.ResetOverlay();
+            opacity.Value = AppSettings.DefaultOverlayOpacity * 100;
+            size.Value = AppSettings.DefaultOverlayFontSize;
+        }
+
         fpsBody.Children.Add(opacityLabel);
         fpsBody.Children.Add(opacity);
         fpsBody.Children.Add(sizeLabel);
         fpsBody.Children.Add(size);
+        fpsBody.Children.Add(Ui.Wrap(Ui.Btn("Repor overlay ao padrao", ResetOverlay)));
 
         // ---------- manutencao ----------
         var quickCard = Card("MANUTENCAO RAPIDA", 480);

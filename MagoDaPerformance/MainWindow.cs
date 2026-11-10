@@ -475,6 +475,21 @@ public partial class MainWindow : Window
         if (save) Settings.Save();
     }
 
+    /// <summary>
+    /// Repoe o overlay de FPS no padrao: sem posicao guardada (volta ao canto superior direito
+    /// do ecra do rato) e com opacidade/tamanho de fabrica.
+    /// </summary>
+    public void ResetOverlay()
+    {
+        Settings.OverlayLeft = null;
+        Settings.OverlayTop = null;
+        Settings.OverlayOpacity = AppSettings.DefaultOverlayOpacity;
+        Settings.OverlayFontSize = AppSettings.DefaultOverlayFontSize;
+        Overlay?.ResetToDefaults();
+        Settings.Save();
+        Status("Overlay reposto ao padrao");
+    }
+
     public void UpdateOverlay(double fps)
     {
         if (Overlay is { IsVisible: true }) Overlay.UpdateFps(fps);

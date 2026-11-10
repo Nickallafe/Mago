@@ -93,6 +93,18 @@ public sealed class FpsOverlay : Window
         set { _fontSize = Math.Clamp(value, MinFontSize, MaxFontSize); ApplyLook(); }
     }
 
+    /// <summary>
+    /// Volta ao aspeto e a posicao de fabrica: opacidade/tamanho padrao e canto superior
+    /// direito do ecra onde esta' o rato. Nao grava nada; quem chama decide quando guardar.
+    /// </summary>
+    public void ResetToDefaults()
+    {
+        _opacity = AppSettings.DefaultOverlayOpacity;
+        _fontSize = AppSettings.DefaultOverlayFontSize;
+        ApplyLook();
+        PlaceOnCursorScreen();
+    }
+
     private void ApplyLook()
     {
         _text.FontSize = _fontSize;
