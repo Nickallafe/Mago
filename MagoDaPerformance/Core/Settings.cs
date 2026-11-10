@@ -24,37 +24,49 @@ public sealed class AppSettings
 
     private static readonly JsonSerializerOptions Options = new() { WriteIndented = true };
 
-    public static AppSettings Load()
+    /// <summary>Repoe o overlay de FPS no padrao: sem posicao guardada, opacidade e tamanho de fabrica.</summary>
+    public void ResetOverlay()
     {
+        OverlayLeft = null;
+        OverlayTop = null;
+        OverlayOpacity = DefaultOverlayOpacity;
+        OverlayFontSize = DefaultOverlayFontSize;
+    }
+
+    /// <summary><paramref name="path"/> nulo usa <see cref="Paths.SettingsFile"/>; os testes passam um ficheiro temporario.</summary>
+    public static AppSettings Load(string? path = null)
+    {
+        path ??= Paths.SettingsFile;
         try
         {
-            if (!File.Exists(Paths.SettingsFile))
+            if (!File.Exists(path))
             {
                 // Cria o ficheiro com valores padrao para que a opcao de update fique disponivel imediatamente
                 var defaults = new AppSettings();
-                defaults.Save();
+                defaults.Save(path);
                 return defaults;
             }
-            return JsonSerializer.Deserialize<AppSettings>(File.ReadAllText(Paths.SettingsFile)) ?? new AppSettings();
+            return JsonSerializer.Deserialize<AppSettings>(File.ReadAllText(path)) ?? new AppSettings();
         }
         catch (Exception ex)
         {
             Log.Write("Preferencias ilegiveis: " + ex.Message, "AVISO");
             // Em caso de erro, retorna defaults e tenta criar o ficheiro
             var defaults = new AppSettings();
-            try { defaults.Save(); } catch { }
+            try { defaults.Save(path); } catch { }
             return defaults;
         }
     }
 
-    public void Save()
+    public void Save(string? path = null)
     {
+        path ??= Paths.SettingsFile;
         try
         {
-            Directory.CreateDirectory(Paths.DataDir);
-            var temp = Paths.SettingsFile + ".tmp";
+            Directory.CreateDirectory(Path.GetDirectoryName(path) ?? Paths.DataDir);
+            var temp = path + ".tmp";
             File.WriteAllText(temp, JsonSerializer.Serialize(this, Options));
-            File.Move(temp, Paths.SettingsFile, true);
+            File.Move(temp, path, true);
         }
         catch (Exception ex)
         {

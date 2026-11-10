@@ -238,3 +238,90 @@ public class ReportRedactionTests
         Assert.DoesNotContain(userName, redacted, StringComparison.OrdinalIgnoreCase);
     }
 }
+
+/// <summary>
+/// Preferencias do overlay. Cada teste usa um ficheiro temporario (AppSettings.Load/Save
+/// aceitam caminho) para nunca tocar no %LOCALAPPDATA% de quem corre os testes.
+/// </summary>
+public class AppSettingsTests : IDisposable
+{
+    private readonly string _dir = Path.Combine(Path.GetTempPath(), "mago_settings_" + Guid.NewGuid().ToString("N"));
+    private readonly string _file;
+
+    public AppSettingsTests()
+    {
+        Directory.CreateDirectory(_dir);
+        _file = Path.Combine(_dir, "mago_settings.json");
+    }
+
+    public void Dispose()
+    {
+        if (Directory.Exists(_dir)) Directory.Delete(_dir, true);
+    }
+
+    [Fact]
+    public void Padroes_do_overlay_sao_opacidade_082_e_texto_22_sem_posicao()
+    {
+        var settings = new AppSettings();
+
+        Assert.Equal(0.82, settings.OverlayOpacity, 3);
+        Assert.Equal(22, settings.OverlayFontSize, 3);
+        Assert.Null(settings.OverlayLeft);
+        Assert.Null(settings.OverlayTop);
+    }
+
+    [Fact]
+    public void Guarda_e_le_opacidade_tamanho_e_posicao()
+    {
+        var settings = new AppSettings
+        {
+            OverlayOpacity = 0.45,
+            OverlayFontSize = 31,
+            OverlayLeft = 1200.5,
+            OverlayTop = 48,
+        };
+        settings.Save(_file);
+
+        var loaded = AppSettings.Load(_file);
+
+        Assert.Equal(0.45, loaded.OverlayOpacity, 3);
+        Assert.Equal(31, loaded.OverlayFontSize, 3);
+        Assert.Equal(1200.5, loaded.OverlayLeft);
+        Assert.Equal(48, loaded.OverlayTop);
+    }
+
+    [Fact]
+    public void Load_sem_ficheiro_cria_padroes()
+    {
+        var loaded = AppSettings.Load(_file);
+
+        Assert.True(File.Exists(_file));
+        Assert.Equal(0.82, loaded.OverlayOpacity, 3);
+        Assert.Equal(22, loaded.OverlayFontSize, 3);
+        Assert.Null(loaded.OverlayLeft);
+    }
+
+    [Fact]
+    public void ResetOverlay_limpa_posicao_e_volta_aos_padroes_mesmo_depois_de_reabrir()
+    {
+        var settings = new AppSettings
+        {
+            AdvancedMode = true,
+            OverlayOpacity = 0.2,
+            OverlayFontSize = 48,
+            OverlayLeft = -10,
+            OverlayTop = 700,
+        };
+
+        settings.ResetOverlay();
+        settings.Save(_file);
+        var loaded = AppSettings.Load(_file);
+
+        Assert.Null(loaded.OverlayLeft);
+        Assert.Null(loaded.OverlayTop);
+        Assert.Equal(0.82, loaded.OverlayOpacity, 3);
+        Assert.Equal(22, loaded.OverlayFontSize, 3);
+        // O reset mexe so' no overlay: o resto das preferencias fica como estava.
+        Assert.True(loaded.AdvancedMode);
+    }
+}

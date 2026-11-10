@@ -481,10 +481,7 @@ public partial class MainWindow : Window
     /// </summary>
     public void ResetOverlay()
     {
-        Settings.OverlayLeft = null;
-        Settings.OverlayTop = null;
-        Settings.OverlayOpacity = AppSettings.DefaultOverlayOpacity;
-        Settings.OverlayFontSize = AppSettings.DefaultOverlayFontSize;
+        Settings.ResetOverlay();
         Overlay?.ResetToDefaults();
         Settings.Save();
         Status("Overlay reposto ao padrao");
