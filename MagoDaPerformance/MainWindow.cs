@@ -14,6 +14,9 @@ public partial class MainWindow : Window
     private readonly ProgressBar _bar = new();
     private readonly DispatcherTimer _timer;
     private PanelPage? _panel;
+    private ColumnDefinition? _sideColumn;
+    private FrameworkElement? _headerMeters;
+    private FrameworkElement? _headerVersion;
 
     public BackupStore Store { get; }
     public TweakEngine Engine { get; }
@@ -25,17 +28,15 @@ public partial class MainWindow : Window
     public MainWindow()
     {
         Title = "MAGO DA PERFORMANCE v6.0";
-        MinWidth = 1200;
-        MinHeight = 740;
-        // VisualStateManager breakpoints: Compact <768, Medium <1200, Wide >=1200
+        FitWindowToScreen();
         Background = Ui.Br(Ui.Bg);
-        WindowStartupLocation = WindowStartupLocation.CenterScreen;
         FontFamily = Ui.UiFont;
 
-        // VisualStateManager breakpoints for responsive layout
-        // Compact: <768, Medium: <1200, Wide: >=1200
+        // Breakpoints: Compact <768, Medium <1200, Wide >=1200.
+        // Aplicado diretamente no layout porque a janela nao define VisualStates.
         SizeChanged += OnSizeChanged;
-        GoToStateBasedOnWidth();
+        // Per-monitor v2: ao mudar de ecra com outra escala, garante que a janela continua a caber.
+        DpiChanged += (_, _) => ClampToWorkArea();
         Store = new BackupStore(Paths.BackupFile);
         Engine = new TweakEngine(Store);
         Settings = AppSettings.Load();
@@ -48,6 +49,9 @@ public partial class MainWindow : Window
         _lblRam.Margin = new Thickness(10, 0, 10, 0);
         _lblDisk.Margin = new Thickness(10, 0, 10, 0);
         _lblStatus.Margin = new Thickness(16, 0, 0, 0);
+        // Estados longos nao podem empurrar o cabecalho para fora em janelas estreitas.
+        _lblStatus.MaxWidth = 300;
+        _lblStatus.TextTrimming = TextTrimming.CharacterEllipsis;
 
         _bar.IsIndeterminate = true;
         _bar.Height = 2;
@@ -65,7 +69,6 @@ public partial class MainWindow : Window
         root.Children.Add(_bar);
         Grid.SetRow(_bar, 1);
         Grid.SetColumn(_bar, 0);
-        VerticalAlignment = VerticalAlignment.Top;
 
         BuildPages();
         ShowPage(Program.StartPage ?? "painel");
@@ -118,16 +121,22 @@ public partial class MainWindow : Window
         left.Children.Add(Ui.Lbl(" DA PERFORMANCE", 20, Ui.Txt, bold: true, wrap: false));
         var version = Ui.Lbl("   v6.0  CONTROL CENTER", 10, Ui.Dim, wrap: false);
         version.VerticalAlignment = VerticalAlignment.Center;
+        _headerVersion = version;
         left.Children.Add(version);
 
+        // CPU/RAM/disco escondem-se em janelas estreitas; o estado continua sempre visivel.
+        var stats = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
+        stats.Children.Add(_lblCpu);
+        stats.Children.Add(_lblRam);
+        stats.Children.Add(_lblDisk);
+
         var meters = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 20, 0) };
-        meters.Children.Add(_lblCpu);
-        meters.Children.Add(_lblRam);
-        meters.Children.Add(_lblDisk);
+        meters.Children.Add(stats);
         meters.Children.Add(_lblStatus);
 
         Grid.SetColumn(left, 0);
         Grid.SetColumn(meters, 2);
+        _headerMeters = stats;
         panel.Children.Add(left);
         panel.Children.Add(meters);
         return panel;
@@ -137,7 +146,8 @@ public partial class MainWindow : Window
     {
         var body = new Grid();
         Grid.SetRow(body, 1);
-        body.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(214) });
+        _sideColumn = new ColumnDefinition { Width = new GridLength(214) };
+        body.ColumnDefinitions.Add(_sideColumn);
         body.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
 
         var side = new Border
@@ -454,37 +464,61 @@ public partial class MainWindow : Window
         if (Overlay is { IsVisible: true }) Overlay.UpdateFps(fps);
     }
 
-    private void OnSizeChanged(object sender, SizeChangedEventArgs e)
+    /// <summary>
+    /// Dimensiona a janela dentro da area util do ecra. <see cref="SystemParameters.WorkArea"/>
+    /// ja vem em DIPs, portanto a escala/DPI do Windows e' considerada automaticamente.
+    /// Sem isto, telas pequenas com escala alta (ex.: 1366x768 a 150%) abriam a janela fora do ecra.
+    /// </summary>
+    private void FitWindowToScreen()
     {
-        // VisualStateManager transition based on window width
-        if (ActualWidth >= 1200)
-        {
-            VisualStateManager.GoToState(this, "Wide", useTransitions: false);
-        }
-        else if (ActualWidth >= 768)
-        {
-            VisualStateManager.GoToState(this, "Medium", useTransitions: false);
-        }
-        else
-        {
-            VisualStateManager.GoToState(this, "Compact", useTransitions: false);
-        }
+        var area = SystemParameters.WorkArea;
+        var maxW = Math.Max(640, area.Width - 24);
+        var maxH = Math.Max(420, area.Height - 24);
+
+        // Minimos nunca excedem o espaco real disponivel.
+        MinWidth = Math.Min(1200, maxW);
+        MinHeight = Math.Min(740, maxH);
+
+        // Tamanho inicial cabe sempre na area util (o conteudo tem scroll).
+        Width = Math.Min(1280, maxW);
+        Height = Math.Min(860, maxH);
+
+        WindowStartupLocation = WindowStartupLocation.Manual;
+        Left = area.Left + Math.Max(0, (area.Width - Width) / 2);
+        Top = area.Top + Math.Max(0, (area.Height - Height) / 2);
+
+        ApplyResponsiveLayout(Width);
     }
 
-    private void GoToStateBasedOnWidth()
+    private void OnSizeChanged(object sender, SizeChangedEventArgs e) => ApplyResponsiveLayout(ActualWidth);
+
+    /// <summary>Impede que a janela fique maior que a area util apos mudanca de escala/DPI.</summary>
+    private void ClampToWorkArea()
     {
-        // Initial state on window load
-        if (ActualWidth >= 1200)
-        {
-            VisualStateManager.GoToState(this, "Wide", useTransitions: false);
-        }
-        else if (ActualWidth >= 768)
-        {
-            VisualStateManager.GoToState(this, "Medium", useTransitions: false);
-        }
-        else
-        {
-            VisualStateManager.GoToState(this, "Compact", useTransitions: false);
-        }
+        var area = SystemParameters.WorkArea;
+        var maxW = Math.Max(640, area.Width - 24);
+        var maxH = Math.Max(420, area.Height - 24);
+        MinWidth = Math.Min(1200, maxW);
+        MinHeight = Math.Min(740, maxH);
+        if (Width > maxW) Width = maxW;
+        if (Height > maxH) Height = maxH;
+        ApplyResponsiveLayout(ActualWidth > 0 ? ActualWidth : Width);
+    }
+
+    /// <summary>Ajusta a barra lateral e o cabecalho conforme a largura disponivel.</summary>
+    private void ApplyResponsiveLayout(double width)
+    {
+        // Compact <768, Medium <1200, Wide >=1200
+        var compact = width < 768;
+        var medium = width < 1200;
+
+        if (_sideColumn != null)
+            _sideColumn.Width = new GridLength(compact ? 150 : medium ? 186 : 214);
+
+        if (_headerVersion != null)
+            _headerVersion.Visibility = width >= 1024 ? Visibility.Visible : Visibility.Collapsed;
+
+        if (_headerMeters != null)
+            _headerMeters.Visibility = width >= 1000 ? Visibility.Visible : Visibility.Collapsed;
     }
 }

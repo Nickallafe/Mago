@@ -19,8 +19,9 @@ public sealed class AppSettings
             if (!File.Exists(Paths.SettingsFile))
             {
                 // Cria o ficheiro com valores padrao para que a opcao de update fique disponivel imediatamente
-                Save();
-                return new AppSettings();
+                var defaults = new AppSettings();
+                defaults.Save();
+                return defaults;
             }
             return JsonSerializer.Deserialize<AppSettings>(File.ReadAllText(Paths.SettingsFile)) ?? new AppSettings();
         }
@@ -28,8 +29,9 @@ public sealed class AppSettings
         {
             Log.Write("Preferencias ilegiveis: " + ex.Message, "AVISO");
             // Em caso de erro, retorna defaults e tenta criar o ficheiro
-            try { Save(); } catch { }
-            return new AppSettings();
+            var defaults = new AppSettings();
+            try { defaults.Save(); } catch { }
+            return defaults;
         }
     }
 
