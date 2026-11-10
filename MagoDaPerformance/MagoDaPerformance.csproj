@@ -12,8 +12,8 @@
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <ApplicationIcon>..\icon.ico</ApplicationIcon>
     <StartupObject>MagoDaPerformance.Program</StartupObject>
-    <Version>0.2.6</Version>
-    <FileVersion>0.2.6.0</FileVersion>
+    <Version>0.2.7</Version>
+    <FileVersion>0.2.7.0</FileVersion>
     <Product>Mago da Performance</Product>
     <Company>Ribanense Solucoes</Company>
     <SatelliteResourceLanguages>pt-BR</SatelliteResourceLanguages>
