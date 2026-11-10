@@ -184,6 +184,81 @@ public static class Net
         return "Sem medicoes suficientes para diagnosticar.";
     }
 
+
+    // ---------- latencia sob carga (bufferbloat) ----------
+
+    /// <summary>
+    /// Mede o ping com a rede parada e com um download a decorrer. A diferenca e' o
+    /// bufferbloat: fila no router/ISP que estraga o jogo online mesmo com boa velocidade.
+    /// </summary>
+    public static (double Idle, double Loaded) LatencyUnderLoad(string host = "1.1.1.1")
+    {
+        var idle = new List<double>();
+        using var ping = new Ping();
+        var buffer = new byte[32];
+        for (var i = 0; i < 5; i++)
+        {
+            try
+            {
+                var reply = ping.Send(host, 800, buffer);
+                if (reply?.Status == IPStatus.Success) idle.Add(reply.RoundtripTime);
+            }
+            catch { }
+        }
+
+        var download = Task.Run(() => MeasureDownload(chunkBytes: 8_000_000, maxSeconds: 5,
+            settleSeconds: 0.3, windowSeconds: 2, maxChunks: 3));
+
+        var loaded = new List<double>();
+        var deadline = Environment.TickCount64 + 5000;
+        while (loaded.Count < 8 && Environment.TickCount64 < deadline)
+        {
+            try
+            {
+                var reply = ping.Send(host, 700, buffer);
+                if (reply?.Status == IPStatus.Success) loaded.Add(reply.RoundtripTime);
+            }
+            catch { }
+            Thread.Sleep(120);
+        }
+        try { download.Wait(8000); } catch { }
+
+        return (idle.Count > 0 ? idle.Average() : 0, loaded.Count > 0 ? loaded.Average() : 0);
+    }
+
+    public static double BloatIncrease(double idleMs, double loadedMs) =>
+        loadedMs <= 0 || idleMs <= 0 ? 0 : Math.Max(0, loadedMs - idleMs);
+
+    /// <summary>Nota A-F pela latencia extra sob carga (referencia do bufferbloat test).</summary>
+    public static string BloatGrade(double increaseMs) => increaseMs switch
+    {
+        <= 0 => "--",
+        < 30 => "A",
+        < 60 => "B",
+        < 120 => "C",
+        < 250 => "D",
+        _ => "F",
+    };
+
+    public static string BloatSummary(double idleMs, double loadedMs)
+    {
+        if (idleMs <= 0 || loadedMs <= 0)
+            return "Latencia sob carga: sem resposta do servidor de teste (verifique a ligacao).";
+
+        var increase = BloatIncrease(idleMs, loadedMs);
+        var grade = BloatGrade(increase);
+        var verdict = grade switch
+        {
+            "A" => "excelente: a fila do router nao atrapalha o jogo.",
+            "B" => "bom, com alguma fila sob carga.",
+            "C" => "aceitavel para casual, notavel em shooters.",
+            "D" => "mau: picos de latencia quando alguem usa a rede.",
+            _ => "muito mau: fila enorme; ative SQM/QoS no router.",
+        };
+        return $"Latencia sob carga: {idleMs:0} ms parado, {loadedMs:0} ms a descarregar " +
+               $"(+{increase:0} ms). Nota {grade} - {verdict}";
+    }
+
     /// <summary>Adaptador com rota predefinida, gateway e DNS atuais.</summary>
     public static NetRoute Route()
     {

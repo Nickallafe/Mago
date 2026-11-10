@@ -19,6 +19,10 @@ public sealed class PanelPage : PageBase
     private readonly CheckBox _overlay;
     private readonly TextBlock _stress;
     private readonly TextBlock _measureStatus;
+    private readonly TextBlock _ramLine, _cpuLine, _diskLine;
+    private readonly ListBox _procList;
+    private List<ProcessLoad> _procData = new();
+    private bool _diagLoaded, _diagLoading;
 
     private bool _scanning;
     private bool _downloading;
@@ -172,6 +176,24 @@ public sealed class PanelPage : PageBase
             Ui.Btn("2. Medir depois e comparar", () => Measure(isBaseline: false)),
             Ui.Btn("Limpar", ClearMeasurement)));
         measureBody.Children.Add(_measureStatus);
+
+        // ---------- diagnostico rapido ----------
+        var diagCard = Card("DIAGNOSTICO RAPIDO", 480);
+        var diagBody = BodyOf(diagCard);
+        diagBody.Children.Add(Ui.Lbl(
+            "RAM abaixo do anunciado (XMP/EXPO), CPU limitada ou processos a comer CPU: " +
+            "e' aqui que costuma estar o desempenho que falta.", 11, Ui.Dim));
+        _ramLine = Ui.Lbl("RAM: a ler...", 11, Ui.Txt);
+        _cpuLine = Ui.Lbl("CPU: a ler...", 11, Ui.Txt);
+        _diskLine = Ui.Lbl("Discos: a ler...", 11, Ui.Txt);
+        diagBody.Children.Add(_ramLine);
+        diagBody.Children.Add(_cpuLine);
+        diagBody.Children.Add(_diskLine);
+        _procList = Ui.TextList(112);
+        diagBody.Children.Add(_procList);
+        diagBody.Children.Add(Ui.Wrap(
+            Ui.Btn("Analisar de novo", () => LoadDiagnostics(force: true), primary: true),
+            Ui.Btn("Fechar processo selecionado", CloseSelectedProcess)));
 
         Add(pc);
         Add(drv);
@@ -370,6 +392,7 @@ public sealed class PanelPage : PageBase
     {
         if (string.IsNullOrWhiteSpace(_presentMon.Text))
             _presentMon.Text = FpsMonitor.AutoLocatePresentMon() ?? "";
+        LoadDiagnostics();
     }
 
     /// <summary>Descarrega e instala o PresentMon sem sair da app.</summary>
@@ -596,5 +619,70 @@ public sealed class PanelPage : PageBase
 
     private static double PercentChange(double before, double after) =>
         before <= 0.0001 ? 0 : (after - before) / before * 100.0;
+
+    // ---------- diagnostico rapido ----------
+
+    private void LoadDiagnostics(bool force = false)
+    {
+        if (_diagLoading) return;
+        if (!force && _diagLoaded) return;
+        _diagLoading = true;
+        _ramLine.Text = "RAM: a ler...";
+        _cpuLine.Text = "CPU: a ler...";
+        _diskLine.Text = "Discos: a ler...";
+
+        System.Threading.Tasks.Task.Run(() =>
+        {
+            string ram, cpu, disk;
+            var procs = new List<ProcessLoad>();
+            try { ram = HardwareInsight.MemorySummary(HardwareInsight.MemoryModules()); }
+            catch (Exception ex) { ram = "RAM: falhou a leitura (" + ex.Message + ")"; }
+            try { cpu = HardwareInsight.CpuSummary(HardwareInsight.Cpu()); }
+            catch (Exception ex) { cpu = "CPU: falhou a leitura (" + ex.Message + ")"; }
+            try { disk = HardwareInsight.DiskSummary(HardwareInsight.Disks()); }
+            catch (Exception ex) { disk = "Discos: falhou a leitura (" + ex.Message + ")"; }
+            try { procs = HardwareInsight.TopProcesses(6); }
+            catch (Exception ex) { Log.Write("Top processos: " + ex.Message, "AVISO"); }
+
+            Host.Dispatcher.Invoke(() =>
+            {
+                _ramLine.Text = ram;
+                _ramLine.Foreground = Ui.Br(ram.StartsWith("XMP/EXPO", StringComparison.OrdinalIgnoreCase) ? Ui.Gold : Ui.Txt);
+                _cpuLine.Text = cpu;
+                _cpuLine.Foreground = Ui.Br(cpu.Contains("possivel limite", StringComparison.OrdinalIgnoreCase) ? Ui.Gold : Ui.Txt);
+                _diskLine.Text = disk;
+                _diskLine.Foreground = Ui.Br(disk.Contains("Unhealthy", StringComparison.OrdinalIgnoreCase) ? Ui.Red : Ui.Txt);
+
+                _procData = procs;
+                _procList.Items.Clear();
+                foreach (var p in procs)
+                    _procList.Items.Add($"{p.Name}  (PID {p.Pid})   CPU {p.CpuPercent:0.0}%   RAM {p.RamMb:0} MB");
+                if (procs.Count == 0) _procList.Items.Add("Sem dados de processos.");
+
+                _diagLoaded = true;
+                _diagLoading = false;
+            });
+        });
+    }
+
+    private void CloseSelectedProcess()
+    {
+        var index = _procList.SelectedIndex;
+        if (index < 0 || index >= _procData.Count)
+        {
+            Host.Info("Selecione um processo na lista.", "Fechar processo");
+            return;
+        }
+
+        var p = _procData[index];
+        if (!Host.Confirm(
+                $"Pedir o fecho de {p.Name} (PID {p.Pid})?\n\n" +
+                "Apps com trabalho por guardar recusam e ficam abertos. Nao uso terminacao forcada.",
+                "Fechar processo"))
+            return;
+
+        Host.Info(TweakEngine.CloseProcessGracefully(p.Pid, p.Name), "Fechar processo");
+        LoadDiagnostics(force: true);
+    }
 
 }

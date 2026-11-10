@@ -624,6 +624,31 @@ public sealed class TweakEngine
               $"Continuam abertos (tem trabalho por guardar): {string.Join(", ", kept)}.";
     }
 
+
+    /// <summary>
+    /// Pede o fecho de um processo especifico (sem /f). Processos sem janela nao sao
+    /// tocados: sao servicos ou apps de bandeja, e mata-los perde estado.
+    /// </summary>
+    public static string CloseProcessGracefully(int pid, string name)
+    {
+        try
+        {
+            using var process = Process.GetProcessById(pid);
+            if (process.MainWindowHandle == IntPtr.Zero)
+                return $"{name}: sem janela visivel (app de fundo/servico). Feche pelo proprio programa.";
+
+            if (!process.CloseMainWindow()) return $"{name}: recusou o pedido de fecho.";
+            if (process.WaitForExit(4000))
+            {
+                Log.Write("Processo fechado a pedido: " + name);
+                return $"{name} fechado.";
+            }
+            return $"{name}: continua aberto (provavelmente a pedir para guardar trabalho).";
+        }
+        catch (ArgumentException) { return $"{name}: ja nao esta a correr."; }
+        catch (Exception ex) { return $"{name}: {ex.Message}"; }
+    }
+
     /// <summary>Aplica todos os modulos e devolve um resumo do que passou e do que falhou.</summary>
     public string ApplyAll(Action<string>? progress = null)
     {

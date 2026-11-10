@@ -416,3 +416,83 @@ public class UpdateChecksumTests
         finally { if (File.Exists(path)) File.Delete(path); }
     }
 }
+
+/// <summary>Vereditos puros do diagnostico de hardware (sem ler o PC).</summary>
+public class HardwareInsightTests
+{
+    [Fact]
+    public void Ram_abaixo_do_anunciado_avisa_do_xmp_desligado()
+    {
+        var modules = new List<MemoryModule>
+        {
+            new(3200, 2133, 8, "DIMM_A1"),
+            new(3200, 2133, 8, "DIMM_B1"),
+        };
+        var text = HardwareInsight.MemorySummary(modules);
+        Assert.StartsWith("XMP/EXPO desligado", text);
+        Assert.Contains("3200 MT/s", text);
+        Assert.Contains("2133 MT/s", text);
+    }
+
+    [Fact]
+    public void Ram_na_velocidade_anunciada_nao_avisa()
+    {
+        var modules = new List<MemoryModule> { new(3200, 3200, 16, "DIMM_A1") };
+        var text = HardwareInsight.MemorySummary(modules);
+        Assert.DoesNotContain("XMP", text);
+        Assert.Contains("16 GB", text);
+    }
+
+    [Fact]
+    public void Ram_sem_modulos_nao_inventa_resultado() =>
+        Assert.Contains("nao foi possivel", HardwareInsight.MemorySummary(new List<MemoryModule>()));
+
+    [Fact]
+    public void Cpu_muito_abaixo_do_maximo_com_carga_avisa_de_limite()
+    {
+        var text = HardwareInsight.CpuSummary(new CpuState(1800, 4200, 85, 91));
+        Assert.Contains("possivel limite", text);
+        Assert.Contains("91 C", text);
+    }
+
+    [Fact]
+    public void Cpu_em_repouso_nao_avisa_de_limite()
+    {
+        var text = HardwareInsight.CpuSummary(new CpuState(1800, 4200, 5, null));
+        Assert.DoesNotContain("possivel limite", text);
+    }
+
+    [Fact]
+    public void Discos_resumem_saude_e_espaco_livre()
+    {
+        var disks = new List<DiskInfo> { new("NVMe SSD", "SSD", "Healthy", 953, 120.0) };
+        var text = HardwareInsight.DiskSummary(disks);
+        Assert.Contains("NVMe SSD", text);
+        Assert.Contains("953 GB", text);
+        Assert.Contains("120 GB livres", text);
+    }
+
+    [Theory]
+    [InlineData(0, "--")]
+    [InlineData(10, "A")]
+    [InlineData(45, "B")]
+    [InlineData(90, "C")]
+    [InlineData(200, "D")]
+    [InlineData(400, "F")]
+    public void Bufferbloat_usa_as_faixas_publicas(double increase, string grade) =>
+        Assert.Equal(grade, Net.BloatGrade(increase));
+
+    [Fact]
+    public void Bufferbloat_resume_antes_e_depois()
+    {
+        var text = Net.BloatSummary(12, 140);
+        Assert.Contains("12 ms", text);
+        Assert.Contains("140 ms", text);
+        Assert.Contains("+128 ms", text);
+        Assert.Contains("Nota D", text);
+    }
+
+    [Fact]
+    public void Bufferbloat_sem_medicao_nao_da_nota() =>
+        Assert.Contains("sem resposta", Net.BloatSummary(0, 0));
+}

@@ -9,6 +9,7 @@ public sealed class NetworkPage : PageBase
     private readonly TextBlock _ping;
     private readonly TextBlock _speed;
     private readonly TextBlock _diag;
+    private readonly TextBlock _bloat;
     private readonly TextBlock _dnsRanking;
     private readonly TextBlock _dnsStatus;
     private readonly ListBox _dnsChoices;
@@ -35,12 +36,15 @@ public sealed class NetworkPage : PageBase
         _ping = Ui.Lbl("Ping: a medir...", 12, Ui.Txt);
         _speed = Ui.Lbl("Velocidade: ainda nao medida.", 12, Ui.Txt);
         _diag = Ui.Lbl("", 12, Ui.Gold);
+        _bloat = Ui.Lbl("Latencia sob carga: ainda nao medida.", 12, Ui.Txt);
         testBody.Children.Add(Ui.Wrap(
             Ui.Btn("Ping", RunPing),
             Ui.Btn("Velocidade", RunSpeed),
+            Ui.Btn("Latencia sob carga", RunBufferbloat),
             Ui.Btn("TESTE COMPLETO", RunFull)));
         testBody.Children.Add(_ping);
         testBody.Children.Add(_speed);
+        testBody.Children.Add(_bloat);
         testBody.Children.Add(_diag);
 
         var dnsCard = Card("DNS - MELHOR RESOLVEDOR", 970);
@@ -267,4 +271,27 @@ public sealed class NetworkPage : PageBase
             return "DNS voltou a automatico (DHCP).";
         }, "A restaurar DNS automatico...");
     }
+    /// <summary>
+    /// Bufferbloat: ping com a rede parada e com download a decorrer. E' o que explica
+    /// lag em jogo quando alguem em casa comeca a ver video, mesmo com boa velocidade.
+    /// </summary>
+    private void RunBufferbloat()
+    {
+        _bloat.Text = "Latencia sob carga: a medir (cerca de 10 s)...";
+        _bloat.Foreground = Ui.Br(Ui.Gold);
+        Host.RunTask(() =>
+        {
+            var (idle, loaded) = Net.LatencyUnderLoad(_route.Gateway ?? "1.1.1.1");
+            var summary = Net.BloatSummary(idle, loaded);
+            if (Host.Dispatcher.HasShutdownStarted) return null;
+            Host.Dispatcher.Invoke(() =>
+            {
+                _bloat.Text = summary;
+                _bloat.Foreground = Ui.Br(loaded <= 0 ? Ui.Gold
+                    : Net.BloatGrade(Net.BloatIncrease(idle, loaded)) is "A" or "B" ? Ui.Green : Ui.Red);
+            });
+            return null;
+        }, "Latencia sob carga...");
+    }
+
 }
