@@ -18,9 +18,17 @@ public sealed class PanelPage : PageBase
     private readonly Button _fpsButton;
     private readonly CheckBox _overlay;
     private readonly TextBlock _stress;
+    private readonly TextBlock _measureStatus;
 
     private bool _scanning;
     private bool _downloading;
+    private bool _measuring;
+
+    // Comparacao antes/depois: mesma duracao nas duas capturas.
+    private const int MeasureSeconds = 20;
+    private Measurement? _baseline;
+
+    private readonly record struct Measurement(double Average, double Low1, double P95, int Samples);
 
     public PanelPage(MainWindow host) : base(host, "Bem-vindo",
         "Resumo do seu PC, drivers e atalhos do dia a dia.")
@@ -151,9 +159,24 @@ public sealed class PanelPage : PageBase
             })));
         quickBody.Children.Add(_stress);
 
+        // ---------- medir antes / depois ----------
+        var measureCard = Card("MEDIR ANTES / DEPOIS", 480);
+        var measureBody = BodyOf(measureCard);
+        measureBody.Children.Add(Ui.Lbl(
+            $"Mede {MeasureSeconds} s do jogo aberto (FPS medio, 1% low e p95 do frametime). " +
+            "Mede a base, aplica as otimizacoes em Otimizar e mede de novo: e' a unica forma de " +
+            "saber se o ganho foi real.", 11, Ui.Dim));
+        _measureStatus = Ui.Lbl("Escolha o jogo na lista e indique o PresentMon acima.", 11, Ui.Dim);
+        measureBody.Children.Add(Ui.Wrap(
+            Ui.Btn("1. Medir base", () => Measure(isBaseline: true), primary: true),
+            Ui.Btn("2. Medir depois e comparar", () => Measure(isBaseline: false)),
+            Ui.Btn("Limpar", ClearMeasurement)));
+        measureBody.Children.Add(_measureStatus);
+
         Add(pc);
         Add(drv);
         Add(Row(fpsCard, quickCard));
+        Add(Row(measureCard));
 
         // BeginInvoke: o leitor do PresentMon nunca pode ficar bloqueado a espera da UI.
         Host.Fps.Updated += (current, average, samples) =>
@@ -462,4 +485,116 @@ public sealed class PanelPage : PageBase
         Host.Fps.Reset();
         _fpsValue.Text = "FPS --   media --";
     }
+    // ---------- medir antes / depois ----------
+
+    private void ClearMeasurement()
+    {
+        _baseline = null;
+        _measureStatus.Text = "Medicao limpa. Comece pela base.";
+        _measureStatus.Foreground = Ui.Br(Ui.Dim);
+    }
+
+    private async void Measure(bool isBaseline)
+    {
+        if (_measuring) return;
+        if (Host.Fps.Running)
+        {
+            Host.Info("Ja existe uma medicao a decorrer. Pare-a primeiro.", "Medir");
+            return;
+        }
+        if (!isBaseline && _baseline == null)
+        {
+            Host.Info("Meca primeiro a base: sem ela nao há nada para comparar.", "Medir");
+            return;
+        }
+        if (_targets.SelectedItem is not string target || string.IsNullOrWhiteSpace(target))
+        {
+            Host.Info("Escolha o jogo na lista (use \"Listar jogos abertos\").", "Medir");
+            return;
+        }
+
+        var presentMon = _presentMon.Text.Trim().Trim('"');
+        if (presentMon.Length == 0) presentMon = FpsMonitor.AutoLocatePresentMon() ?? "";
+        if (presentMon.Length == 0)
+        {
+            Host.Info("Indique o PresentMon (Localizar ou Baixar).", "Medir");
+            return;
+        }
+        _presentMon.Text = presentMon;
+
+        _measuring = true;
+        _measureStatus.Foreground = Ui.Br(Ui.Txt);
+        try
+        {
+            Host.Fps.Reset();
+            if (!Host.Fps.Start(presentMon, target, out var error))
+            {
+                _measureStatus.Foreground = Ui.Br(Ui.Red);
+                _measureStatus.Text = error;
+                return;
+            }
+
+            _fpsButton.Content = "A MEDIR...";
+            _measureStatus.Text = $"A medir {target} durante {MeasureSeconds} s. Deixe o jogo a correr.";
+            await System.Threading.Tasks.Task.Delay(TimeSpan.FromSeconds(MeasureSeconds));
+            Host.Fps.Stop();
+            _fpsButton.Content = "INICIAR MEDICAO";
+
+            var samples = Host.Fps.Samples;
+            if (samples < 60)
+            {
+                _measureStatus.Foreground = Ui.Br(Ui.Gold);
+                _measureStatus.Text = $"So {samples} quadros em {MeasureSeconds} s: o jogo estava a correr? " +
+                                      "Sem dados suficientes para comparar.";
+                return;
+            }
+
+            var current = new Measurement(Host.Fps.AverageFps, Host.Fps.OnePercentLowFps, Host.Fps.P95FrameTime, samples);
+            if (isBaseline)
+            {
+                _baseline = current;
+                _measureStatus.Foreground = Ui.Br(Ui.Txt);
+                _measureStatus.Text = "Base: " + Describe(current) +
+                                      "\nAplique as otimizacoes (Otimizar) e clique em \"2. Medir depois\".";
+            }
+            else
+            {
+                _measureStatus.Foreground = Ui.Br(Ui.Txt);
+                _measureStatus.Text = Compare(_baseline!.Value, current);
+            }
+        }
+        finally
+        {
+            _measuring = false;
+        }
+    }
+
+    private static string Describe(Measurement m) =>
+        $"{m.Average:0.0} fps media | {m.Low1:0.0} fps no 1% low | p95 {m.P95:0.00} ms | {m.Samples} quadros";
+
+    private static string Compare(Measurement before, Measurement after)
+    {
+        var avg = PercentChange(before.Average, after.Average);
+        var low = PercentChange(before.Low1, after.Low1);
+        var p95 = PercentChange(before.P95, after.P95);
+
+        // So conta como ganho se a media subir e o 1% low nao piorar: media alta com
+        // stutter pior nao é progresso.
+        var verdict = avg >= 3 && low >= -1
+            ? "GANHO"
+            : avg <= -3 || low <= -5
+                ? "PIOROU"
+                : "DENTRO DO RUIDO";
+
+        return $"VEREDITO: {verdict}\n" +
+               $"Antes: {Describe(before)}\n" +
+               $"Depois: {Describe(after)}\n" +
+               $"Media {avg:+0.0;-0.0;0.0}% | 1% low {low:+0.0;-0.0;0.0}% | p95 {p95:+0.0;-0.0;0.0}% " +
+               "(no p95, negativo e' melhor)" +
+               (verdict == "PIOROU" ? "\nUse \"Desfazer um modulo\" em Otimizar." : "");
+    }
+
+    private static double PercentChange(double before, double after) =>
+        before <= 0.0001 ? 0 : (after - before) / before * 100.0;
+
 }

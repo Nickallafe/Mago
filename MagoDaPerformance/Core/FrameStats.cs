@@ -26,6 +26,34 @@ internal sealed class FrameStats
     public double AverageFps { get; private set; }
     public int Samples { get; private set; }
 
+    /// <summary>Frametime no percentil pedido (0-1), por nearest-rank.</summary>
+    public double FrameTimePercentile(double percentile)
+    {
+        if (_all.Count == 0) return 0;
+        var sorted = _all.ToArray();
+        Array.Sort(sorted);
+        var rank = (int)Math.Ceiling(Math.Clamp(percentile, 0, 1) * sorted.Length);
+        return sorted[Math.Clamp(rank - 1, 0, sorted.Length - 1)];
+    }
+
+    /// <summary>
+    /// FPS do 1% pior: media dos frametimes mais lentos (no minimo um frame).
+    /// E' o numero que corresponde ao stutter que o jogador sente, nao a media.
+    /// </summary>
+    public double OnePercentLowFps
+    {
+        get
+        {
+            if (_all.Count == 0) return 0;
+            var worst = _all.OrderByDescending(x => x).ToArray();
+            var count = Math.Max(1, (int)Math.Round(worst.Length * 0.01, MidpointRounding.AwayFromZero));
+            var average = worst.Take(count).Average();
+            return average > 0 ? 1000.0 / average : 0;
+        }
+    }
+
+    public double P95FrameTime => FrameTimePercentile(0.95);
+
     /// <summary>
     /// Processa uma linha CSV. Devolve true apenas quando entrou um frame novo; linhas de
     /// cabecalho, texto invalido e valores fora dos limites devolvem false.

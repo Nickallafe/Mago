@@ -21,6 +21,10 @@ public sealed class FpsMonitor : IDisposable
     public double CurrentFps => _stats.CurrentFps;
     public double AverageFps => _stats.AverageFps;
     public int Samples => _stats.Samples;
+
+    /// <summary>FPS do 1% pior (p99 do frametime) da captura toda.</summary>
+    public double OnePercentLowFps => _stats.OnePercentLowFps;
+    public double P95FrameTime => _stats.P95FrameTime;
     public bool Running => _running;
 
     public event Action<double, double, int>? Updated;

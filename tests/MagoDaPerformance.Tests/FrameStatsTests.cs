@@ -151,3 +151,60 @@ public class FrameStatsTests
         Assert.Equal(60.0, stats.CurrentFps, 2);
     }
 }
+
+/// <summary>Metricas de cauda usadas na comparacao antes/depois.</summary>
+public class FrameStatsPercentileTests
+{
+    private const string Header =
+        "Application,ProcessID,MsBetweenPresents";
+
+    private static FrameStats Feed(params string[] frameTimes)
+    {
+        var stats = new FrameStats();
+        stats.Feed(FpsMonitor.SplitCsv(Header));
+        foreach (var ms in frameTimes) stats.Feed(FpsMonitor.SplitCsv($"game.exe,1,{ms}"));
+        return stats;
+    }
+
+    [Fact]
+    public void Um_frame_lento_em_cem_aparece_no_1_por_cento_low()
+    {
+        var times = Enumerable.Repeat("10.0", 99).Append("50.0").ToArray();
+        var stats = Feed(times);
+
+        // O pior 1% de 100 frames e' o unico frame de 50 ms -> 20 fps.
+        Assert.Equal(20.0, stats.OnePercentLowFps, 2);
+        // Media harmonica de 100 frames em 1.04 s (99x10 ms + 1x50 ms) = 96.15 fps.
+        Assert.Equal(96.15, stats.AverageFps, 2);
+    }
+
+    [Fact]
+    public void Sem_amostras_as_metricas_sao_zero()
+    {
+        var stats = Feed();
+        Assert.Equal(0, stats.OnePercentLowFps, 3);
+        Assert.Equal(0, stats.P95FrameTime, 3);
+    }
+
+    [Fact]
+    public void P95_fica_no_frametime_do_percentil_95()
+    {
+        // 95 frames rapidos + 5 lentos: 95% dos frames ficam em 10 ms (nearest-rank).
+        var times = Enumerable.Repeat("10.0", 95).Concat(Enumerable.Repeat("20.0", 5)).ToArray();
+        var stats = Feed(times);
+
+        Assert.Equal(10.0, stats.P95FrameTime, 2);
+        Assert.Equal(50.0, stats.OnePercentLowFps, 2);   // 1% de 100 = 1 frame: 20 ms -> 50 fps
+    }
+
+    [Fact]
+    public void Comparacao_de_duas_capturas_mostra_a_diferenca()
+    {
+        var before = Feed(Enumerable.Repeat("16.667", 100).ToArray());
+        var after = Feed(Enumerable.Repeat("10.0", 100).ToArray());
+
+        Assert.True(after.AverageFps > before.AverageFps);
+        Assert.Equal(100.0, after.AverageFps, 1);
+        Assert.Equal(60.0, before.AverageFps, 1);
+    }
+}
