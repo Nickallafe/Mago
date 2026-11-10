@@ -29,9 +29,9 @@ ficar pronta.
 
 | Página | O que faz |
 |--------|-----------|
-| **Painel** | Resumo do PC (SO, CPU, GPU, RAM, discos) lido ao abrir, cartão de drivers com alerta de drivers antigos e atualização pelo Windows Update, FPS via PresentMon e manutenção rápida. |
+| **Painel** | Resumo do PC (SO, CPU, GPU, RAM, discos) lido ao abrir, cartão de drivers com alerta de drivers antigos e atualização pelo Windows Update, FPS via PresentMon, **medição antes/depois** (FPS médio, 1% low e p95) e **diagnóstico rápido** (XMP/EXPO, limite térmico, saúde do disco, processos que comem CPU). |
 | **Otimizar** | Perfis Equilibrado/Competitivo e módulos: GPU/HAGS, Windows Gaming, registo multimédia, energia, serviços, temp+DNS, rede, input lag, SSD. |
-| **Rede** | Ao abrir faz pré-análise automática (adaptador, gateway, DNS atuais, link e ping). Botões para ping, download/upload e benchmark de resolvedores DNS com troca por `netsh`. |
+| **Rede** | Ao abrir faz pré-análise automática (adaptador, gateway, DNS atuais, link e ping). Botões para ping, download/upload, **latência sob carga (bufferbloat, nota A-F)** e benchmark de resolvedores DNS com troca por `netsh`. |
 | **Aplicativos** | Lista Win32 e Store, pesquisa, desinstalação oficial e remoção forçada. |
 | **Backup** | Captura, exportação/importação, restauro e pontos de restauro do Windows. |
 | **BIOS** | Firmware, board, Secure Boot, TPM e atalho ao suporte do fabricante. |
@@ -113,8 +113,9 @@ configuração estão em [`docs/CODE_SIGNING.md`](docs/CODE_SIGNING.md).
 
 ## Testes
 
-Testes das funções puras (parsing de registo, nomes de apps da Store, CSV do
-PresentMon, tokens do BCD, caminhos seguros e round-trip do backup):
+Testes das funções puras (parsing de registo, nomes de apps da Store, CSV e
+estatísticas do PresentMon, tokens do BCD, caminhos seguros, round-trip do backup,
+preferências do overlay, hash da atualização e vereditos de RAM/CPU/disco/bufferbloat):
 
 ```bat
 dotnet test tests\MagoDaPerformance.Tests\MagoDaPerformance.Tests.csproj
