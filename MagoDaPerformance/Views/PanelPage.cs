@@ -178,7 +178,7 @@ public sealed class PanelPage : PageBase
         TickFrequency = step,
         IsSnapToTickEnabled = true,
         MinWidth = 220,
-        Foreground = Ui.Br(Ui.Green),
+        Style = Ui.DarkSlider,
         Margin = new Thickness(0, 2, 0, 10),
     };
 

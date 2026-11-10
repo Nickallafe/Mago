@@ -1,5 +1,6 @@
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Markup;
 using System.Windows.Media;
 
 namespace MagoDaPerformance;
@@ -175,6 +176,66 @@ public static class Ui
         text.SetValue(TextBlock.TextWrappingProperty, TextWrapping.Wrap);
         list.ItemTemplate = new DataTemplate { VisualTree = text };
         return list;
+    }
+
+    /// <summary>
+    /// Slider escuro do tema (trilho Line, preenchimento e polegar Green), pronto para
+    /// claro/escuro do sistema sem depender do visual padrao do Windows.
+    /// </summary>
+    public static Style DarkSlider { get; } = BuildDarkSlider();
+
+    private static Style BuildDarkSlider()
+    {
+        var line = Line.ToString();
+        var green = Green.ToString();
+        var bg = Bg.ToString();
+
+        var xaml = $$"""
+<ControlTemplate xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                 xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                 TargetType="{x:Type Slider}">
+  <Grid Height="22" Background="Transparent">
+    <Border Height="4" CornerRadius="2" Background="{{line}}" VerticalAlignment="Center" />
+    <Track x:Name="PART_Track">
+      <Track.DecreaseRepeatButton>
+        <RepeatButton Command="{x:Static Slider.DecreaseLarge}" Focusable="False">
+          <RepeatButton.Template>
+            <ControlTemplate TargetType="{x:Type RepeatButton}">
+              <Border Height="4" CornerRadius="2" Background="{{green}}" VerticalAlignment="Center" />
+            </ControlTemplate>
+          </RepeatButton.Template>
+        </RepeatButton>
+      </Track.DecreaseRepeatButton>
+      <Track.Thumb>
+        <Thumb Width="14" Height="14" Cursor="Hand">
+          <Thumb.Template>
+            <ControlTemplate TargetType="{x:Type Thumb}">
+              <Ellipse Fill="{{green}}" Stroke="{{bg}}" StrokeThickness="2" />
+            </ControlTemplate>
+          </Thumb.Template>
+        </Thumb>
+      </Track.Thumb>
+      <Track.IncreaseRepeatButton>
+        <RepeatButton Command="{x:Static Slider.IncreaseLarge}" Focusable="False">
+          <RepeatButton.Template>
+            <ControlTemplate TargetType="{x:Type RepeatButton}">
+              <Border Height="22" Background="Transparent" />
+            </ControlTemplate>
+          </RepeatButton.Template>
+        </RepeatButton>
+      </Track.IncreaseRepeatButton>
+    </Track>
+  </Grid>
+</ControlTemplate>
+""";
+
+        return new Style(typeof(Slider))
+        {
+            Setters =
+            {
+                new Setter(Control.TemplateProperty, (ControlTemplate)XamlReader.Parse(xaml)),
+            },
+        };
     }
 
     public static ScrollViewer Scroll(UIElement content) => new()
