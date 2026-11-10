@@ -14,6 +14,10 @@ public sealed class AppSettings
     [JsonPropertyName("overlay_left")] public double? OverlayLeft { get; set; }
     [JsonPropertyName("overlay_top")] public double? OverlayTop { get; set; }
 
+    // Aspeto do overlay de FPS: opacidade do fundo (0.15-1) e tamanho do texto em DIPs (12-48).
+    [JsonPropertyName("overlay_opacity")] public double OverlayOpacity { get; set; } = 0.82;
+    [JsonPropertyName("overlay_font_size")] public double OverlayFontSize { get; set; } = 22;
+
     private static readonly JsonSerializerOptions Options = new() { WriteIndented = true };
 
     public static AppSettings Load()

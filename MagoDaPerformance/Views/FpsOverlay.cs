@@ -18,7 +18,10 @@ public sealed class FpsOverlay : Window
     private const double Edge = 24;
 
     private readonly TextBlock _text;
+    private readonly Border _badge;
     private readonly AppSettings _settings;
+    private double _opacity;
+    private double _fontSize;
 
     // Ancorado ao canto superior direito: o badge nao "anda" quando o FPS muda de largura.
     private bool _anchoredRight = true;
@@ -39,27 +42,29 @@ public sealed class FpsOverlay : Window
         SizeToContent = SizeToContent.WidthAndHeight;
         WindowStartupLocation = WindowStartupLocation.Manual;
 
+        _opacity = Math.Clamp(settings.OverlayOpacity, MinOpacity, 1);
+        _fontSize = Math.Clamp(settings.OverlayFontSize, MinFontSize, MaxFontSize);
+
         _text = new TextBlock
         {
             Text = "FPS --",
             FontFamily = new FontFamily("Consolas"),
-            FontSize = 22,
             FontWeight = FontWeights.Bold,
             Foreground = Ui.Br(Ui.Green),
             Margin = new Thickness(14, 8, 14, 8),
         };
 
-        var border = new Border
+        _badge = new Border
         {
-            Background = Ui.Br(Color.FromRgb(0x05, 0x07, 0x0B), 0.82),
             BorderBrush = Ui.Br(Ui.Green),
             BorderThickness = new Thickness(1),
             CornerRadius = new CornerRadius(8),
             Child = _text,
             Cursor = Cursors.SizeAll,
         };
-        border.MouseLeftButtonDown += OnBadgeMouseDown;
-        Content = border;
+        _badge.MouseLeftButtonDown += OnBadgeMouseDown;
+        Content = _badge;
+        ApplyLook();
 
         SizeChanged += OnOverlaySizeChanged;
         DpiChanged += (_, _) =>
@@ -68,6 +73,30 @@ public sealed class FpsOverlay : Window
             if (_anchoredRight) AnchorTopRight();
             else KeepInsideScreen();
         };
+    }
+
+    public const double MinOpacity = 0.15;
+    public const double MinFontSize = 12;
+    public const double MaxFontSize = 48;
+
+    /// <summary>Opacidade do fundo do badge (0.15 a 1). Aplicada ao vivo.</summary>
+    public double BadgeOpacity
+    {
+        get => _opacity;
+        set { _opacity = Math.Clamp(value, MinOpacity, 1); ApplyLook(); }
+    }
+
+    /// <summary>Tamanho do texto em DIPs (12 a 48). Aplicado ao vivo.</summary>
+    public double BadgeFontSize
+    {
+        get => _fontSize;
+        set { _fontSize = Math.Clamp(value, MinFontSize, MaxFontSize); ApplyLook(); }
+    }
+
+    private void ApplyLook()
+    {
+        _text.FontSize = _fontSize;
+        _badge.Background = Ui.Br(Color.FromRgb(0x05, 0x07, 0x0B), _opacity);
     }
 
     public void UpdateFps(double fps)

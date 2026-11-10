@@ -1,5 +1,6 @@
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using System.Windows.Media;
 
 namespace MagoDaPerformance;
@@ -94,6 +95,39 @@ public sealed class PanelPage : PageBase
         fpsBody.Children.Add(_targets);
         fpsBody.Children.Add(Ui.Wrap(_fpsButton, _overlay, Ui.Btn("Reiniciar contagem", ResetFps)));
 
+        // Aspeto do overlay: aplicado ao vivo e guardado em mago_settings.json.
+        var opacityLabel = Ui.Lbl("", 11, Ui.Dim);
+        var opacity = OverlaySlider(
+            FpsOverlay.MinOpacity * 100, 100, 5,
+            Math.Clamp(Host.Settings.OverlayOpacity, FpsOverlay.MinOpacity, 1) * 100);
+        void ShowOpacity() => opacityLabel.Text = $"Opacidade do overlay: {opacity.Value:0}%";
+        ShowOpacity();
+        opacity.ValueChanged += (_, _) =>
+        {
+            ShowOpacity();
+            // Durante o arrasto so' aplica; grava no fim (ou logo, se veio do teclado).
+            Host.SetOverlayOpacity(opacity.Value / 100, save: !opacity.IsMouseCaptureWithin);
+        };
+        opacity.AddHandler(Thumb.DragCompletedEvent, new DragCompletedEventHandler((_, _) => Host.Settings.Save()));
+
+        var sizeLabel = Ui.Lbl("", 11, Ui.Dim);
+        var size = OverlaySlider(
+            FpsOverlay.MinFontSize, FpsOverlay.MaxFontSize, 1,
+            Math.Clamp(Host.Settings.OverlayFontSize, FpsOverlay.MinFontSize, FpsOverlay.MaxFontSize));
+        void ShowSize() => sizeLabel.Text = $"Tamanho do texto: {size.Value:0} px";
+        ShowSize();
+        size.ValueChanged += (_, _) =>
+        {
+            ShowSize();
+            Host.SetOverlayFontSize(size.Value, save: !size.IsMouseCaptureWithin);
+        };
+        size.AddHandler(Thumb.DragCompletedEvent, new DragCompletedEventHandler((_, _) => Host.Settings.Save()));
+
+        fpsBody.Children.Add(opacityLabel);
+        fpsBody.Children.Add(opacity);
+        fpsBody.Children.Add(sizeLabel);
+        fpsBody.Children.Add(size);
+
         // ---------- manutencao ----------
         var quickCard = Card("MANUTENCAO RAPIDA", 480);
         var quickBody = BodyOf(quickCard);
@@ -135,6 +169,18 @@ public sealed class PanelPage : PageBase
     }
 
     private static StackPanel BodyOf(Border card) => (StackPanel)((StackPanel)card.Child).Children[1];
+
+    private static Slider OverlaySlider(double min, double max, double step, double value) => new()
+    {
+        Minimum = min,
+        Maximum = max,
+        Value = value,
+        TickFrequency = step,
+        IsSnapToTickEnabled = true,
+        MinWidth = 220,
+        Foreground = Ui.Br(Ui.Green),
+        Margin = new Thickness(0, 2, 0, 10),
+    };
 
     private static TextBlock Spec(Grid grid, int row, int column, string label)
     {

@@ -459,6 +459,22 @@ public partial class MainWindow : Window
         onToggle?.Invoke(show ? "Overlay FPS ligado" : "Overlay FPS desligado");
     }
 
+    /// <summary>Opacidade do fundo do overlay de FPS (0.15-1), aplicada ao vivo.</summary>
+    public void SetOverlayOpacity(double value, bool save)
+    {
+        Settings.OverlayOpacity = Math.Clamp(value, FpsOverlay.MinOpacity, 1);
+        if (Overlay is { } overlay) overlay.BadgeOpacity = Settings.OverlayOpacity;
+        if (save) Settings.Save();
+    }
+
+    /// <summary>Tamanho do texto do overlay de FPS em DIPs, aplicado ao vivo.</summary>
+    public void SetOverlayFontSize(double value, bool save)
+    {
+        Settings.OverlayFontSize = Math.Clamp(value, FpsOverlay.MinFontSize, FpsOverlay.MaxFontSize);
+        if (Overlay is { } overlay) overlay.BadgeFontSize = Settings.OverlayFontSize;
+        if (save) Settings.Save();
+    }
+
     public void UpdateOverlay(double fps)
     {
         if (Overlay is { IsVisible: true }) Overlay.UpdateFps(fps);
