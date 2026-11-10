@@ -198,7 +198,7 @@ public sealed class PanelPage : PageBase
         Add(pc);
         Add(drv);
         Add(Row(fpsCard, quickCard));
-        Add(Row(measureCard));
+        Add(Row(measureCard, diagCard));
 
         // BeginInvoke: o leitor do PresentMon nunca pode ficar bloqueado a espera da UI.
         Host.Fps.Updated += (current, average, samples) =>

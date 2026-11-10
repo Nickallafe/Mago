@@ -264,7 +264,7 @@ public partial class MainWindow : Window
         if (!_pages.TryGetValue(key, out var page)) return;
         _host.Content = page.Root;
         // Cada pagina pode carregar o que precisa ao ficar visivel (ex.: pre-analise de rede).
-        if (_host.Content != null) page.OnShown();
+        if (_host.Content != null && !SkipPageSideEffects) page.OnShown();
         foreach (var (name, btn) in _nav)
         {
             var active = name == key;
@@ -272,6 +272,12 @@ public partial class MainWindow : Window
             btn.Background = Ui.Br(active ? Color.FromRgb(0x15, 0x1C, 0x27) : Ui.Side);
         }
     }
+
+    /// <summary>Conteudo da pagina visivel (usado pelos testes de layout para medir/capturar).</summary>
+    internal UIElement? CurrentPageContent => _host.Content as UIElement;
+
+    /// <summary>Nos testes de layout nao se dispara OnShown (evita rede e leituras do sistema).</summary>
+    internal bool SkipPageSideEffects { get; set; }
 
     public void Status(string text)
     {

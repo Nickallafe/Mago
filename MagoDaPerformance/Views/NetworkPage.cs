@@ -26,6 +26,8 @@ public sealed class NetworkPage : PageBase
         var infoCard = Card("ADAPTADOR", 380);
         var infoBody = BodyOf(infoCard);
         _info = Ui.Mono("A ler a rede...", 11, Ui.Txt);
+        // Sem margem, o texto de estado encosta nos botoes (visivel na captura de layout).
+        _info.Margin = new Thickness(0, 0, 0, 8);
         infoBody.Children.Add(_info);
         infoBody.Children.Add(Ui.Wrap(
             Ui.Btn("Analisar de novo", () => AutoAnalyse(force: true), primary: true),

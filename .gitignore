@@ -31,3 +31,6 @@ publish/
 
 # Captura de ecra usada em revisao visual
 ui-print.png
+
+# Capturas de layout geradas pelos testes de UI (nao vao para o git)
+ui-snapshots/

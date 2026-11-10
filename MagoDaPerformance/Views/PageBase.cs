@@ -28,10 +28,13 @@ public abstract class PageBase
     /// <summary>Cartao de largura fixa (WrapPanel) com o corpo para preencher.</summary>
     protected Border Card(string title, double width = 380)
     {
-        var card = Ui.CardBox(title, out var body);
-        card.Width = width;
+        // Largura preferida, nao fixa: em janelas estreitas o cartao encolhe em vez de
+        // estourar a pagina (o WrapPanel faz a linha passar para baixo).
+        var card = Ui.ResponsiveCardBox(title, width, out var body);
         // Sem isto o WrapPanel estica todos os cartoes da linha a altura do mais alto.
         card.VerticalAlignment = VerticalAlignment.Top;
+        // Sem isto o StackPanel vertical estica o cartao a largura toda da pagina.
+        card.HorizontalAlignment = HorizontalAlignment.Left;
         body.Tag = card;
         return card;
     }

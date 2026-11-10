@@ -22,6 +22,7 @@
 
   <ItemGroup>
     <InternalsVisibleTo Include="MagoDaPerformance.Tests" />
+    <InternalsVisibleTo Include="MagoDaPerformance.UiSnapshots" />
   </ItemGroup>
 
 </Project>

@@ -92,6 +92,57 @@ public static class Ui
     }
 
     /// <summary>Cartao com titulo; o corpo recebe os controles.</summary>
+    /// <summary>
+    /// Cartao com largura preferida mas que encolhe quando a janela e' estreita. Antes
+    /// usava Width fixo: a 900 DIPs (1366x768 a 150%) os cartoes de 970 estouravam a pagina.
+    /// </summary>
+    public sealed class ResponsiveCard : Border
+    {
+        public double PreferredWidth { get; set; } = 380;
+
+        protected override Size MeasureOverride(Size constraint)
+        {
+            var chromeWidth = Padding.Left + Padding.Right + BorderThickness.Left + BorderThickness.Right;
+            var chromeHeight = Padding.Top + Padding.Bottom + BorderThickness.Top + BorderThickness.Bottom;
+
+            var maxWidth = double.IsInfinity(constraint.Width)
+                ? PreferredWidth
+                : Math.Min(PreferredWidth, constraint.Width);
+            var innerWidth = Math.Max(0, maxWidth - chromeWidth);
+            var innerHeight = double.IsInfinity(constraint.Height)
+                ? double.PositiveInfinity
+                : Math.Max(0, constraint.Height - chromeHeight);
+
+            Child?.Measure(new Size(innerWidth, innerHeight));
+
+            var contentWidth = (Child?.DesiredSize.Width ?? 0) + chromeWidth;
+            // Nunca mais estreito do que o conteudo nem mais largo do que o espaco disponivel.
+            var width = Math.Min(maxWidth, Math.Max(contentWidth, maxWidth));
+            var height = (Child?.DesiredSize.Height ?? 0) + chromeHeight;
+            return new Size(width, height);
+        }
+    }
+
+    public static ResponsiveCard ResponsiveCardBox(string title, double preferredWidth, out StackPanel body)
+    {
+        var border = CardBox(title, out body);
+        // O filho tem de ser desligado do Border temporario antes de mudar de pai.
+        var content = border.Child;
+        border.Child = null;
+
+        return new ResponsiveCard
+        {
+            PreferredWidth = preferredWidth,
+            Background = border.Background,
+            BorderBrush = border.BorderBrush,
+            BorderThickness = border.BorderThickness,
+            CornerRadius = border.CornerRadius,
+            Padding = border.Padding,
+            Margin = border.Margin,
+            Child = content,
+        };
+    }
+
     public static Border CardBox(string title, out StackPanel body)
     {
         body = new StackPanel { Margin = new Thickness(0) };
@@ -241,9 +292,12 @@ public static class Ui
     public static ScrollViewer Scroll(UIElement content) => new()
     {
         Content = content,
+        // Fundo explicito: sem isto a pagina fica transparente (a janela pinta por tras).
+        Background = Br(Bg),
         VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
-        // Auto: em janelas estreitas os cartoes largos passam a ter barra em vez de serem cortados.
-        HorizontalScrollBarVisibility = ScrollBarVisibility.Auto,
+        // Disabled: a pagina fica limitada a largura visivel. Os cartoes encolhem (ResponsiveCard)
+        // e o WrapPanel passa a linha para baixo, em vez de aparecer barra horizontal.
+        HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
         Padding = new Thickness(2, 2, 10, 2),
     };
 }
