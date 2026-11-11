@@ -61,6 +61,12 @@ public sealed class GamesPage : PageBase
         overlayBody.Children.Add(Ui.Lbl(
             "Janela pequena sempre por cima com o FPS atual. Arraste-a para o canto que quiser.",
             11, Ui.Dim));
+        // O erro mais comum de quem mede FPS: o jogo em ecra inteiro exclusivo, onde o
+        // Windows esconde qualquer sobreposicao. Dizer isto evita achar que o overlay falhou.
+        overlayBody.Children.Add(Ui.Lbl(
+            "Em \"tela cheia exclusiva\" nada do Windows fica por cima do jogo. Se o overlay nao aparecer, " +
+            "nas opcoes de video do jogo escolha \"tela cheia sem bordas\" (ou janela): o FPS continua a ser medido.",
+            11, Ui.Gold));
 
         var overlayOn = new CheckBox
         {

@@ -4,6 +4,7 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
+using System.Windows.Threading;
 
 namespace MagoDaPerformance;
 
@@ -26,6 +27,11 @@ public sealed class FpsOverlay : Window
     // Ancorado ao canto superior direito: o badge nao "anda" quando o FPS muda de largura.
     private bool _anchoredRight = true;
     private double _rightEdge = double.NaN;
+
+    // O jogo tambem se declara "sempre por cima": quem chegou por ultimo ao topo da
+    // pilha ganha, por isso o overlay tem de reafirmar o lugar depois de o jogo ganhar foco.
+    public const int TopmostIntervalMs = 700;
+    private DispatcherTimer? _keeper;
 
     public FpsOverlay(AppSettings settings)
     {
@@ -65,6 +71,13 @@ public sealed class FpsOverlay : Window
         _badge.MouseLeftButtonDown += OnBadgeMouseDown;
         Content = _badge;
         ApplyLook();
+
+        // Ferramenta sem ativacao: nao aparece no Alt+Tab e nao rouba o foco ao jogo.
+        SourceInitialized += (_, _) => MakeToolWindow();
+        IsVisibleChanged += (_, _) =>
+        {
+            if (IsVisible) ReassertTopmost();
+        };
 
         SizeChanged += OnOverlaySizeChanged;
         DpiChanged += (_, _) =>
@@ -129,8 +142,46 @@ public sealed class FpsOverlay : Window
 
     protected override void OnClosed(EventArgs e)
     {
+        _keeper?.Stop();
+        _keeper = null;
         base.OnClosed(e);
         SavePosition();
+    }
+
+    /// <summary>
+    /// Marca a janela como ferramenta (fora do Alt+Tab) sem ativacao e comeca a reafirmar o
+    /// topo. Uma janela topmost normal perde o lugar para o jogo, que tambem pede o topo ao
+    /// entrar em ecra inteiro; reafirmar em segundo plano devolve-a acima sem tirar o foco.
+    /// </summary>
+    private void MakeToolWindow()
+    {
+        var handle = new WindowInteropHelper(this).Handle;
+        if (handle == IntPtr.Zero) return;
+
+        var style = GetExStyle(handle);
+        SetExStyle(handle, style | WsExToolWindow | WsExNoActivate);
+        ReassertTopmost();
+
+        _keeper ??= new DispatcherTimer(
+            TimeSpan.FromMilliseconds(TopmostIntervalMs),
+            DispatcherPriority.Background,
+            (_, _) => ReassertTopmost(),
+            Dispatcher);
+        _keeper.Start();
+    }
+
+    /// <summary>
+    /// Pede o topo sem mexer no tamanho, posicao ou foco. Nota: em "tela cheia exclusiva"
+    /// nenhuma janela do Windows aparece por cima do jogo - so' em "sem bordas" ou janela.
+    /// </summary>
+    public void ReassertTopmost()
+    {
+        if (!IsVisible) return;
+        var handle = new WindowInteropHelper(this).Handle;
+        if (handle == IntPtr.Zero) return;
+
+        SetWindowPos(handle, HwndTopmost, 0, 0, 0, 0,
+            SwpNoMove | SwpNoSize | SwpNoActivate | SwpNoOwnerZOrder);
     }
 
     private bool RestoreSavedPosition()
@@ -255,7 +306,39 @@ public sealed class FpsOverlay : Window
     [DllImport("user32.dll")]
     private static extern bool GetMonitorInfo(IntPtr monitor, ref MonitorInfo info);
 
+    [DllImport("user32.dll")]
+    private static extern bool SetWindowPos(IntPtr handle, IntPtr after, int x, int y, int width, int height, uint flags);
+
+    [DllImport("user32.dll", EntryPoint = "GetWindowLongW")]
+    private static extern int GetWindowLong32(IntPtr handle, int index);
+
+    [DllImport("user32.dll", EntryPoint = "SetWindowLongW")]
+    private static extern int SetWindowLong32(IntPtr handle, int index, int value);
+
+    [DllImport("user32.dll", EntryPoint = "GetWindowLongPtrW")]
+    private static extern IntPtr GetWindowLongPtr64(IntPtr handle, int index);
+
+    [DllImport("user32.dll", EntryPoint = "SetWindowLongPtrW")]
+    private static extern IntPtr SetWindowLongPtr64(IntPtr handle, int index, IntPtr value);
+
     private const uint NearestMonitor = 2;
+    private const int GwlExStyle = -20;
+    private const long WsExToolWindow = 0x00000080L;
+    private const long WsExNoActivate = 0x08000000L;
+    private const uint SwpNoSize = 0x0001;
+    private const uint SwpNoMove = 0x0002;
+    private const uint SwpNoActivate = 0x0010;
+    private const uint SwpNoOwnerZOrder = 0x0200;
+    private static readonly IntPtr HwndTopmost = new(-1);
+
+    private static long GetExStyle(IntPtr handle) =>
+        IntPtr.Size == 8 ? GetWindowLongPtr64(handle, GwlExStyle).ToInt64() : GetWindowLong32(handle, GwlExStyle);
+
+    private static void SetExStyle(IntPtr handle, long style)
+    {
+        if (IntPtr.Size == 8) SetWindowLongPtr64(handle, GwlExStyle, new IntPtr(style));
+        else SetWindowLong32(handle, GwlExStyle, unchecked((int)style));
+    }
 
     private static IntPtr MonitorAtCursor() =>
         GetCursorPos(out var point) ? MonitorFromPoint(point, NearestMonitor) : IntPtr.Zero;

@@ -140,6 +140,24 @@ public class UiLayoutTests
     }
 
     /// <summary>
+    /// O overlay tem de ser uma janela "invisivel" para o resto do sistema: por cima, fora
+    /// da barra de tarefas e sem roubar o foco (roubar o foco minimiza jogos em ecra inteiro).
+    /// </summary>
+    [Fact]
+    public void Overlay_e_sempre_por_cima_e_nao_rouba_o_foco()
+    {
+        UiThread.Run(() =>
+        {
+            var overlay = new FpsOverlay(new AppSettings());
+            Assert.True(overlay.Topmost);
+            Assert.False(overlay.ShowInTaskbar);
+            Assert.False(overlay.ShowActivated);
+            Assert.False(overlay.Focusable);
+            Assert.Equal(ResizeMode.NoResize, overlay.ResizeMode);
+        });
+    }
+
+    /// <summary>
     /// O BIOS deixou de ser uma pagina propria: a chave antiga tem de continuar a abrir
     /// a visao geral (onde ficou o cartao do firmware) e nao uma pagina vazia.
     /// </summary>
