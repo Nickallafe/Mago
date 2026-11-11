@@ -182,6 +182,7 @@ public partial class MainWindow : Window
     private const uint ModNoRepeat = 0x4000;
 
     private HwndSource? _hotkeySource;
+    private Button? _hotkeyWarning;
 
     /// <summary>
     /// Liga o atalho guardado. O Windows entrega WM_HOTKEY ao handle que o registou e nao ativa
@@ -195,10 +196,34 @@ public partial class MainWindow : Window
         _hotkeySource = HwndSource.FromHwnd(handle);
         _hotkeySource?.AddHook(HotkeyHook);
 
-        if (TryRegisterHotkey(Settings.OverlayHotkey, out var error)) return;
+        if (!TryRegisterHotkey(Settings.OverlayHotkey, out var error))
+        {
+            Log.Write(error, "AVISO");
+            Status(error);
+        }
+        UpdateHotkeyWarning();
+    }
 
-        Log.Write(error, "AVISO");
-        Status(error);
+    /// <summary>
+    /// Aviso no cabecalho enquanto o atalho nao estiver registado. O rodape passa despercebido
+    /// e quem carrega na tecla e nao ve nada conclui que o overlay e' que esta' avariado.
+    /// </summary>
+    private void UpdateHotkeyWarning()
+    {
+        if (_hotkeyWarning == null) return;
+
+        _hotkeyWarning.Visibility = OverlayHotkeyActive ? Visibility.Collapsed : Visibility.Visible;
+        if (OverlayHotkeyActive) return;
+
+        _hotkeyWarning.Content = $"{Settings.OverlayHotkey} INDISPONIVEL - TROCAR";
+        _hotkeyWarning.ToolTip = $"{Settings.OverlayHotkey} ja' esta' a ser usado por outra app. " +
+                                 "Clique para escolher outro atalho na pagina Jogos.";
+    }
+
+    private void OpenHotkeySettings()
+    {
+        ShowPage("jogos");
+        Status("Escolha outro atalho no cartao OVERLAY NO ECRA.");
     }
 
     /// <summary>
@@ -215,10 +240,12 @@ public partial class MainWindow : Window
             Settings.OverlayHotkey = Hotkey.TryParse(text, out var parsed) ? parsed.Describe() : text;
             Settings.Save();
             Status($"Atalho do overlay: {Settings.OverlayHotkey}");
+            UpdateHotkeyWarning();
             return true;
         }
 
         if (!TryRegisterHotkey(previous, out var previousError)) Log.Write(previousError, "AVISO");
+        UpdateHotkeyWarning();
         return false;
     }
 
@@ -297,8 +324,26 @@ public partial class MainWindow : Window
         stats.Children.Add(_lblRam);
         stats.Children.Add(_lblDisk);
 
+        // Aviso persistente do atalho ocupado, clicavel: leva direto ao sitio onde se troca.
+        _hotkeyWarning = new Button
+        {
+            Background = Brushes.Transparent,
+            Foreground = Ui.Br(Ui.Gold),
+            BorderThickness = new Thickness(0),
+            FontSize = 10,
+            FontWeight = FontWeights.Bold,
+            Padding = new Thickness(8, 4, 8, 4),
+            Margin = new Thickness(0, 0, 12, 0),
+            VerticalAlignment = VerticalAlignment.Center,
+            Cursor = System.Windows.Input.Cursors.Hand,
+            Template = FlatTemplate(),
+            Visibility = Visibility.Collapsed,
+        };
+        _hotkeyWarning.Click += (_, _) => OpenHotkeySettings();
+
         var meters = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 20, 0) };
         meters.Children.Add(stats);
+        meters.Children.Add(_hotkeyWarning);
         meters.Children.Add(_lblStatus);
 
         Grid.SetColumn(left, 0);

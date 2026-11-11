@@ -358,7 +358,7 @@ public sealed class GamesPage : PageBase
         _hotkeyBox.Text = Host.OverlayHotkeyText;
         _hotkeyLabel.Text = Host.OverlayHotkeyActive
             ? "Clique na caixa e carregue na combinacao (Ctrl, Alt, Shift ou Win + uma tecla)."
-            : $"Atalho indisponivel: outra app ja' usa {Host.OverlayHotkeyText}.";
+            : $"Atalho indisponivel: outra app ja' usa {Host.OverlayHotkeyText}. Escolha outra combinacao na caixa acima.";
     }
 
     /// <summary>Le a combinacao do teclado: mais simples e mais seguro do que a escrever a mao.</summary>
