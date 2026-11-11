@@ -1,5 +1,7 @@
+using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Threading;
 
@@ -33,6 +35,15 @@ public partial class MainWindow : Window
 
     /// <summary>Muda quando o jogo entra/sai de ecra inteiro ou troca de modo.</summary>
     public event Action? ScreenModeChanged;
+
+    /// <summary>O overlay foi ligado/desligado (pelo botao ou pelo atalho global).</summary>
+    public event Action? OverlayChanged;
+
+    /// <summary>Atalho global que liga/desliga o overlay sem trazer o Mago para a frente.</summary>
+    public const string OverlayHotkeyLabel = "Ctrl+Alt+F";
+
+    /// <summary>Falso quando outra app ja' tem o atalho: a UI nao deve prometer o que nao funciona.</summary>
+    public bool OverlayHotkeyActive { get; private set; }
 
     public BackupStore Store { get; }
     public TweakEngine Engine { get; }
@@ -122,12 +133,15 @@ public partial class MainWindow : Window
 
         // Vigia o primeiro plano: diz qual e' o jogo a medir e se o overlay ficou por cima.
         StartScreenWatch();
+        // So' ha handle depois de a janela ser criada; o atalho precisa dele.
+        SourceInitialized += (_, _) => RegisterOverlayHotkey();
 
         Closing += (_, _) =>
         {
             // Regista o fecho normal: se o log nao tiver esta linha, o processo foi morto.
             Log.Write("A fechar a janela principal.");
             _screenWatch?.Stop();
+            UnregisterOverlayHotkey();
             Fps.Dispose();
             try { Overlay?.Close(); } catch { }
         };
@@ -160,6 +174,58 @@ public partial class MainWindow : Window
         OverlayBehindGame = behind;
         ScreenModeChanged?.Invoke();
     }
+
+    // ---- atalho global do overlay ----
+
+    private const int OverlayHotkeyId = 0x4A47;
+    private const int WmHotkey = 0x0312;
+    private const uint ModAlt = 0x0001;
+    private const uint ModControl = 0x0002;
+    private const uint ModNoRepeat = 0x4000;
+    private const uint VirtualKeyF = 0x46;
+
+    private HwndSource? _hotkeySource;
+
+    /// <summary>
+    /// Ctrl+Alt+F em qualquer app. O Windows entrega WM_HOTKEY ao handle que o registou e nao
+    /// ativa a janela, por isso o jogo nao perde o foco ao ligar/desligar o overlay.
+    /// </summary>
+    private void RegisterOverlayHotkey()
+    {
+        var handle = new WindowInteropHelper(this).Handle;
+        if (handle == IntPtr.Zero) return;
+
+        _hotkeySource = HwndSource.FromHwnd(handle);
+        _hotkeySource?.AddHook(HotkeyHook);
+        OverlayHotkeyActive = RegisterHotKey(handle, OverlayHotkeyId, ModControl | ModAlt | ModNoRepeat, VirtualKeyF);
+        if (OverlayHotkeyActive) return;
+
+        Log.Write($"Atalho {OverlayHotkeyLabel} indisponivel: outra app ja' o usa.", "AVISO");
+        Status($"Atalho {OverlayHotkeyLabel} indisponivel (outra app ja' o usa).");
+    }
+
+    private IntPtr HotkeyHook(IntPtr handle, int message, IntPtr wParam, IntPtr lParam, ref bool handled)
+    {
+        if (message != WmHotkey || wParam.ToInt32() != OverlayHotkeyId) return IntPtr.Zero;
+        handled = true;
+        ToggleOverlay(Overlay == null);
+        return IntPtr.Zero;
+    }
+
+    private void UnregisterOverlayHotkey()
+    {
+        var handle = new WindowInteropHelper(this).Handle;
+        if (handle != IntPtr.Zero && OverlayHotkeyActive) UnregisterHotKey(handle, OverlayHotkeyId);
+        _hotkeySource?.RemoveHook(HotkeyHook);
+        _hotkeySource = null;
+        OverlayHotkeyActive = false;
+    }
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool RegisterHotKey(IntPtr handle, int id, uint modifiers, uint key);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool UnregisterHotKey(IntPtr handle, int id);
 
     private UIElement BuildHeader()
     {
@@ -551,6 +617,7 @@ public partial class MainWindow : Window
             Overlay = null;
         }
         onToggle?.Invoke(show ? "Overlay FPS ligado" : "Overlay FPS desligado");
+        OverlayChanged?.Invoke();
     }
 
     /// <summary>Opacidade do fundo do overlay de FPS (0.15-1), aplicada ao vivo.</summary>

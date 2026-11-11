@@ -18,6 +18,7 @@ public sealed class GamesPage : PageBase
     private readonly Button _overlayButton;
     private readonly TextBlock _measureStatus;
     private readonly TextBlock _screenLabel;
+    private readonly TextBlock _hotkeyLabel;
 
     private bool _downloading;
     private bool _measuring;
@@ -79,6 +80,10 @@ public sealed class GamesPage : PageBase
         overlayBody.Children.Add(Ui.Lbl(
             "Contador de FPS por cima do jogo. Arraste-o para o canto que quiser: a posicao fica guardada.",
             11, Ui.Dim));
+        _hotkeyLabel = Ui.Lbl("", 9, Ui.Dim);
+        _hotkeyLabel.Margin = new Thickness(0, 6, 0, 0);
+        overlayBody.Children.Add(_hotkeyLabel);
+
         // Legenda do modo de ecra, atualizada sozinha pelo vigia do primeiro plano.
         _screenLabel = Ui.Lbl("", 11, Ui.Dim);
         _screenLabel.Margin = new Thickness(0, 6, 0, 10);
@@ -169,6 +174,14 @@ public sealed class GamesPage : PageBase
             if (Host.Dispatcher.HasShutdownStarted) return;
             UpdateScreenLabel();
         };
+
+        // O atalho global tambem liga o overlay: o botao e a legenda tem de refletir isso.
+        Host.OverlayChanged += () =>
+        {
+            if (Host.Dispatcher.HasShutdownStarted) return;
+            UpdateOverlayButton();
+            UpdateScreenLabel();
+        };
     }
 
     private static StackPanel BodyOf(Border card) => (StackPanel)((StackPanel)card.Child).Children[1];
@@ -192,6 +205,7 @@ public sealed class GamesPage : PageBase
             _presentMon.Text = FpsMonitor.AutoLocatePresentMon() ?? "";
         UpdateOverlayButton();
         UpdateScreenLabel();
+        UpdateHotkeyLabel();
     }
 
     /// <summary>Descarrega e instala o PresentMon sem sair da app.</summary>
@@ -320,17 +334,13 @@ public sealed class GamesPage : PageBase
         }
     }
 
-    private void ToggleOverlay()
-    {
-        var on = Host.Overlay == null;
-        Host.ToggleOverlay(on);
-        UpdateOverlayButton();
-        UpdateScreenLabel();
+    private void ToggleOverlay() => Host.ToggleOverlay(Host.Overlay == null);
 
-        if (on && Host.GameScreen.Fullscreen && Host.OverlayBehindGame)
-            _fpsStatus.Text = "O jogo esta' em tela cheia exclusiva: o Windows esconde o overlay. " +
-                              "Mude o jogo para \"tela cheia sem bordas\" ou janela.";
-    }
+    /// <summary>O atalho so' se anuncia quando ficou mesmo registado.</summary>
+    private void UpdateHotkeyLabel() =>
+        _hotkeyLabel.Text = Host.OverlayHotkeyActive
+            ? $"Atalho {MainWindow.OverlayHotkeyLabel}: liga e desliga o overlay em qualquer app."
+            : "Atalho indisponivel: outra app ja' usa Ctrl+Alt+F.";
 
     private void UpdateOverlayButton() =>
         _overlayButton.Content = Host.Overlay == null ? "Ligar overlay" : "Desligar overlay";
