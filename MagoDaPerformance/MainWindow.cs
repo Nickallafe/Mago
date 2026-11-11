@@ -17,6 +17,22 @@ public partial class MainWindow : Window
     private ColumnDefinition? _sideColumn;
     private FrameworkElement? _headerMeters;
     private FrameworkElement? _headerVersion;
+    private DispatcherTimer? _screenWatch;
+
+    /// <summary>O que esta' em primeiro plano e, se for o caso, em ecra inteiro.</summary>
+    public GameScreen GameScreen { get; private set; } = GameScreen.None;
+
+    /// <summary>
+    /// Ultima app que esteve em frente. Fica guardada porque, ao clicar no Mago para medir,
+    /// o foco passa para o Mago e o jogo deixaria de ser "a app em primeiro plano".
+    /// </summary>
+    public GameScreen LastApp { get; private set; } = GameScreen.None;
+
+    /// <summary>O overlay ficou abaixo do jogo - sinal de tela cheia exclusiva.</summary>
+    public bool OverlayBehindGame { get; private set; }
+
+    /// <summary>Muda quando o jogo entra/sai de ecra inteiro ou troca de modo.</summary>
+    public event Action? ScreenModeChanged;
 
     public BackupStore Store { get; }
     public TweakEngine Engine { get; }
@@ -104,13 +120,45 @@ public partial class MainWindow : Window
             StartAutoUpdate();
         };
 
+        // Vigia o primeiro plano: diz qual e' o jogo a medir e se o overlay ficou por cima.
+        StartScreenWatch();
+
         Closing += (_, _) =>
         {
             // Regista o fecho normal: se o log nao tiver esta linha, o processo foi morto.
             Log.Write("A fechar a janela principal.");
+            _screenWatch?.Stop();
             Fps.Dispose();
             try { Overlay?.Close(); } catch { }
         };
+    }
+
+    /// <summary>Uma leitura por segundo e' suficiente e nao se nota no jogo.</summary>
+    private void StartScreenWatch()
+    {
+        _screenWatch = new DispatcherTimer(
+            TimeSpan.FromSeconds(1),
+            DispatcherPriority.Background,
+            (_, _) => WatchScreen(),
+            Dispatcher);
+        _screenWatch.Start();
+    }
+
+    private void WatchScreen()
+    {
+        var screen = FullScreen.Detect();
+        if (screen.Process.Length > 0) LastApp = screen;
+
+        // Perguntar ao overlay se ficou atras do jogo e' a unica forma honesta de saber se o
+        // Windows o esta' a esconder (ecra inteiro exclusivo): nao ha API que o diga.
+        var behind = screen.Fullscreen && Overlay is { } overlay && overlay.IsBehind(screen.Handle);
+        if (screen.Fullscreen) Overlay?.FollowMonitor(screen.Monitor);
+
+        if (screen == GameScreen && behind == OverlayBehindGame) return;
+
+        GameScreen = screen;
+        OverlayBehindGame = behind;
+        ScreenModeChanged?.Invoke();
     }
 
     private UIElement BuildHeader()

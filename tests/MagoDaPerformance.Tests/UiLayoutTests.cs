@@ -140,6 +140,22 @@ public class UiLayoutTests
     }
 
     /// <summary>
+    /// Medir tem de ser um clique: o jogo vem do primeiro plano, nao de uma lista, e o overlay
+    /// liga-se com a medicao. A escolha manual fica escondida nas opcoes avancadas.
+    /// </summary>
+    [Fact]
+    public void Jogos_mede_o_jogo_em_foco_num_so_clique()
+    {
+        UiThread.Run(() =>
+        {
+            using var window = new TestWindow();
+            AssertPage(window.Window, "jogos", "Medir o jogo em foco");
+            AssertPage(window.Window, "jogos", "Ligar overlay");
+            AssertPage(window.Window, "jogos", "Mostrar opcoes avancadas");
+        });
+    }
+
+    /// <summary>
     /// O overlay tem de ser uma janela "invisivel" para o resto do sistema: por cima, fora
     /// da barra de tarefas e sem roubar o foco (roubar o foco minimiza jogos em ecra inteiro).
     /// </summary>

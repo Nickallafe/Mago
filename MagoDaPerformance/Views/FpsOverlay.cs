@@ -184,6 +184,39 @@ public sealed class FpsOverlay : Window
             SwpNoMove | SwpNoSize | SwpNoActivate | SwpNoOwnerZOrder);
     }
 
+    /// <summary>
+    /// Leva o badge para o canto do monitor onde o jogo esta' em ecra inteiro. Ignora o pedido
+    /// quando o utilizador ja' o arrastou para outro sitio: a escolha dele manda.
+    /// </summary>
+    public void FollowMonitor(IntPtr monitor)
+    {
+        if (!_anchoredRight || monitor == IntPtr.Zero || !IsVisible) return;
+
+        var area = WorkArea(monitor);
+        if (area.IsEmpty) return;
+
+        UpdateLayout();
+        _rightEdge = area.Right - Edge;
+        Left = Math.Max(area.Left + Edge, _rightEdge - ActualWidth);
+        Top = area.Top + Edge;
+    }
+
+    /// <summary>
+    /// O overlay esta' abaixo de <paramref name="other"/> na pilha de janelas? E' este teste
+    /// que identifica a "tela cheia exclusiva": nesse modo o Windows ignora o pedido de topo,
+    /// por isso o overlay continua atras do jogo mesmo depois de o reafirmar.
+    /// </summary>
+    public bool IsBehind(IntPtr other)
+    {
+        var handle = new WindowInteropHelper(this).Handle;
+        if (handle == IntPtr.Zero || other == IntPtr.Zero || other == handle || !IsVisible) return false;
+
+        // GW_HWNDPREV anda para a janela imediatamente acima na ordem Z.
+        for (var above = GetWindow(handle, GwHwndPrev); above != IntPtr.Zero; above = GetWindow(above, GwHwndPrev))
+            if (above == other) return true;
+        return false;
+    }
+
     private bool RestoreSavedPosition()
     {
         if (_settings.OverlayLeft is not { } left || _settings.OverlayTop is not { } top) return false;
@@ -309,6 +342,9 @@ public sealed class FpsOverlay : Window
     [DllImport("user32.dll")]
     private static extern bool SetWindowPos(IntPtr handle, IntPtr after, int x, int y, int width, int height, uint flags);
 
+    [DllImport("user32.dll")]
+    private static extern IntPtr GetWindow(IntPtr handle, uint command);
+
     [DllImport("user32.dll", EntryPoint = "GetWindowLongW")]
     private static extern int GetWindowLong32(IntPtr handle, int index);
 
@@ -322,6 +358,7 @@ public sealed class FpsOverlay : Window
     private static extern IntPtr SetWindowLongPtr64(IntPtr handle, int index, IntPtr value);
 
     private const uint NearestMonitor = 2;
+    private const uint GwHwndPrev = 3;
     private const int GwlExStyle = -20;
     private const long WsExToolWindow = 0x00000080L;
     private const long WsExNoActivate = 0x08000000L;

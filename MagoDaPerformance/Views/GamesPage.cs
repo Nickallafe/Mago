@@ -15,7 +15,9 @@ public sealed class GamesPage : PageBase
     private readonly TextBox _presentMon;
     private readonly ListBox _targets;
     private readonly Button _fpsButton;
+    private readonly Button _overlayButton;
     private readonly TextBlock _measureStatus;
+    private readonly TextBlock _screenLabel;
 
     private bool _downloading;
     private bool _measuring;
@@ -33,52 +35,54 @@ public sealed class GamesPage : PageBase
         var fpsCard = Card("FPS DO JOGO", 480);
         var fpsBody = BodyOf(fpsCard);
         fpsBody.Children.Add(Ui.Lbl(
-            "Abra o jogo, escolha-o na lista e inicie a medicao. O PresentMon le os quadros do jogo.",
+            "Abra o jogo, volte a esta janela e clique em medir. O Mago mede a app que estava em foco e liga o overlay.",
             11, Ui.Dim));
 
         _fpsValue = Ui.Mono("FPS --   media --", 24, Ui.Green);
-        _fpsStatus = Ui.Lbl("Escolha o jogo na lista e confirme o PresentMon.", 11, Ui.Dim);
+        _fpsStatus = Ui.Lbl("Abra o jogo e clique em \"Medir o jogo em foco\".", 11, Ui.Dim);
 
         _presentMon = Ui.Input("PresentMon-2.6.0-x64.exe", 430);
         _presentMon.Margin = new Thickness(0, 6, 8, 8);
         _presentMon.Text = FpsMonitor.AutoLocatePresentMon() ?? "";
         _targets = Ui.List(120);
-        _fpsButton = Ui.Btn("Iniciar medicao", ToggleFps, primary: true);
+        _fpsButton = Ui.Btn("Medir o jogo em foco", ToggleFps, primary: true);
+        _overlayButton = Ui.Btn("Ligar overlay", ToggleOverlay);
 
         fpsBody.Children.Add(_fpsValue);
         fpsBody.Children.Add(_fpsStatus);
-        fpsBody.Children.Add(_presentMon);
-        fpsBody.Children.Add(Ui.Wrap(
+        fpsBody.Children.Add(Ui.Wrap(_fpsButton, _overlayButton, Ui.Btn("Reiniciar contagem", ResetFps)));
+
+        // Opcoes avancadas: escolher PresentMon ou outro .exe a mao. Ficam escondidas porque o
+        // caso normal e' um clique - o jogo em foco e' descoberto sozinho.
+        var advanced = new StackPanel { Visibility = Visibility.Collapsed };
+        advanced.Children.Add(Ui.Lbl("PRESENTMON E OUTRA APP", 9, Ui.Dim, bold: true));
+        advanced.Children.Add(_presentMon);
+        advanced.Children.Add(Ui.Wrap(
             Ui.Btn("Localizar PresentMon", BrowsePresentMon),
             Ui.Btn("Baixar PresentMon", DownloadPresentMon),
-            Ui.Btn("Listar jogos abertos", RefreshTargets)));
-        fpsBody.Children.Add(_targets);
-        fpsBody.Children.Add(Ui.Wrap(_fpsButton, Ui.Btn("Reiniciar contagem", ResetFps)));
+            Ui.Btn("Listar apps abertas", RefreshTargets)));
+        advanced.Children.Add(_targets);
+        var advancedButton = Ui.Btn("Mostrar opcoes avancadas", () => { });
+        advancedButton.Click += (_, _) =>
+        {
+            var show = advanced.Visibility != Visibility.Visible;
+            advanced.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
+            advancedButton.Content = show ? "Esconder opcoes avancadas" : "Mostrar opcoes avancadas";
+        };
+        // Ui.Wrap para o botao nao esticar os 480 px do cartao como uma barra vazia.
+        fpsBody.Children.Add(Ui.Wrap(advancedButton));
+        fpsBody.Children.Add(advanced);
 
         // ---------- overlay ----------
         var overlayCard = Card("OVERLAY NO ECRA", 480);
         var overlayBody = BodyOf(overlayCard);
         overlayBody.Children.Add(Ui.Lbl(
-            "Janela pequena sempre por cima com o FPS atual. Arraste-a para o canto que quiser.",
+            "Contador de FPS por cima do jogo. Arraste-o para o canto que quiser: a posicao fica guardada.",
             11, Ui.Dim));
-        // O erro mais comum de quem mede FPS: o jogo em ecra inteiro exclusivo, onde o
-        // Windows esconde qualquer sobreposicao. Dizer isto evita achar que o overlay falhou.
-        overlayBody.Children.Add(Ui.Lbl(
-            "Em \"tela cheia exclusiva\" nada do Windows fica por cima do jogo. Se o overlay nao aparecer, " +
-            "nas opcoes de video do jogo escolha \"tela cheia sem bordas\" (ou janela): o FPS continua a ser medido.",
-            11, Ui.Gold));
-
-        var overlayOn = new CheckBox
-        {
-            Content = "Mostrar o overlay",
-            IsChecked = Host.Overlay != null,
-            Foreground = Ui.Br(Ui.Txt),
-            Margin = new Thickness(0, 6, 0, 10),
-            VerticalAlignment = VerticalAlignment.Center,
-        };
-        overlayOn.Checked += (_, _) => Host.ToggleOverlay(true);
-        overlayOn.Unchecked += (_, _) => Host.ToggleOverlay(false);
-        overlayBody.Children.Add(overlayOn);
+        // Legenda do modo de ecra, atualizada sozinha pelo vigia do primeiro plano.
+        _screenLabel = Ui.Lbl("", 11, Ui.Dim);
+        _screenLabel.Margin = new Thickness(0, 6, 0, 10);
+        overlayBody.Children.Add(_screenLabel);
 
         var opacityLabel = Ui.Lbl("", 11, Ui.Dim);
         var opacity = OverlaySlider(
@@ -128,7 +132,7 @@ public sealed class GamesPage : PageBase
             $"Mede {MeasureSeconds} s do jogo aberto (FPS medio, 1% low e p95 do frametime). " +
             "Mede a base, aplica as otimizacoes em Otimizar e mede de novo: e' a unica forma de " +
             "saber se o ganho foi real.", 11, Ui.Dim));
-        _measureStatus = Ui.Lbl("Escolha o jogo na lista e indique o PresentMon acima.", 11, Ui.Dim);
+        _measureStatus = Ui.Lbl("Abra o jogo; a base e o depois medem a app que estava em foco.", 11, Ui.Dim);
         measureBody.Children.Add(Ui.Wrap(
             Ui.Btn("1. Medir base", () => Measure(isBaseline: true), primary: true),
             Ui.Btn("2. Medir depois e comparar", () => Measure(isBaseline: false)),
@@ -155,8 +159,15 @@ public sealed class GamesPage : PageBase
             Host.Dispatcher.BeginInvoke(new Action(() =>
             {
                 _fpsStatus.Text = text;
-                _fpsButton.Content = "Iniciar medicao";
+                _fpsButton.Content = "Medir o jogo em foco";
             }));
+        };
+
+        // O modo de ecra muda em segundo plano (o jogo entra em ecra inteiro): a legenda segue.
+        Host.ScreenModeChanged += () =>
+        {
+            if (Host.Dispatcher.HasShutdownStarted) return;
+            UpdateScreenLabel();
         };
     }
 
@@ -179,6 +190,8 @@ public sealed class GamesPage : PageBase
     {
         if (string.IsNullOrWhiteSpace(_presentMon.Text))
             _presentMon.Text = FpsMonitor.AutoLocatePresentMon() ?? "";
+        UpdateOverlayButton();
+        UpdateScreenLabel();
     }
 
     /// <summary>Descarrega e instala o PresentMon sem sair da app.</summary>
@@ -246,7 +259,8 @@ public sealed class GamesPage : PageBase
             {
                 _targets.Items.Clear();
                 foreach (var item in list) _targets.Items.Add(item);
-                if (_targets.SelectedIndex < 0 && list.Count > 0) _targets.SelectedIndex = 0;
+                if (_targets.SelectedIndex < 0 && list.Count > 0 && string.IsNullOrWhiteSpace(Host.LastApp.Process))
+                    _targets.SelectedIndex = 0;
                 _fpsStatus.Text = list.Count > 0
                     ? $"{list.Count} executaveis encontrados."
                     : "Nenhum executavel listado. Abra o jogo e tente de novo.";
@@ -254,37 +268,95 @@ public sealed class GamesPage : PageBase
         });
     }
 
+    /// <summary>
+    /// Um clique: mede a app que estava em foco (o jogo) e liga o overlay. A escolha manual de
+    /// um .exe nas opcoes avancadas continua a ter prioridade.
+    /// </summary>
     private void ToggleFps()
     {
         if (Host.Fps.Running)
         {
             Host.Fps.Stop();
-            _fpsButton.Content = "Iniciar medicao";
+            _fpsButton.Content = "Medir o jogo em foco";
             _fpsStatus.Text = "Medicao parada.";
             return;
         }
-        if (_targets.SelectedItem is not string target || string.IsNullOrWhiteSpace(target))
+
+        var target = _targets.SelectedItem as string;
+        if (string.IsNullOrWhiteSpace(target)) target = Host.LastApp.Process;
+        if (string.IsNullOrWhiteSpace(target))
         {
-            _fpsStatus.Text = "Escolha um jogo na lista (use \"Listar jogos abertos\").";
+            _fpsStatus.Foreground = Ui.Br(Ui.Gold);
+            _fpsStatus.Text = "Abra o jogo, volte a esta janela e clique de novo: o Mago mede a app que estava em foco.";
             return;
         }
+
         var presentMon = _presentMon.Text.Trim().Trim('"');
         if (presentMon.Length == 0) presentMon = FpsMonitor.AutoLocatePresentMon() ?? "";
         if (presentMon.Length == 0)
         {
             _fpsStatus.Foreground = Ui.Br(Ui.Gold);
-            _fpsStatus.Text = "PresentMon nao encontrado. Clique em Baixar.";
+            _fpsStatus.Text = "PresentMon nao encontrado. Abra as opcoes avancadas e clique em Baixar PresentMon.";
             return;
         }
         _presentMon.Text = presentMon;
-        if (Host.Fps.Start(presentMon, target, out var error))
+
+        if (!Host.Fps.Start(presentMon, target, out var error))
         {
-            _fpsButton.Content = "Parar medicao";
-            _fpsStatus.Text = $"A medir {target}. Se o jogo nao estiver aberto, aguarde.";
+            _fpsStatus.Text = error;
+            return;
+        }
+
+        _fpsButton.Content = "Parar medicao";
+        _fpsStatus.Foreground = Ui.Br(Ui.Txt);
+        _fpsStatus.Text = $"A medir {System.IO.Path.GetFileNameWithoutExtension(target)}.";
+
+        // Medir sem ver o numero nao serve de nada: o overlay liga-se com a medicao.
+        if (Host.Overlay == null)
+        {
+            Host.ToggleOverlay(true);
+            UpdateOverlayButton();
+            UpdateScreenLabel();
+        }
+    }
+
+    private void ToggleOverlay()
+    {
+        var on = Host.Overlay == null;
+        Host.ToggleOverlay(on);
+        UpdateOverlayButton();
+        UpdateScreenLabel();
+
+        if (on && Host.GameScreen.Fullscreen && Host.OverlayBehindGame)
+            _fpsStatus.Text = "O jogo esta' em tela cheia exclusiva: o Windows esconde o overlay. " +
+                              "Mude o jogo para \"tela cheia sem bordas\" ou janela.";
+    }
+
+    private void UpdateOverlayButton() =>
+        _overlayButton.Content = Host.Overlay == null ? "Ligar overlay" : "Desligar overlay";
+
+    /// <summary>Diz o que o vigia viu: janela, ecra inteiro com overlay por cima, ou exclusivo.</summary>
+    private void UpdateScreenLabel()
+    {
+        var screen = Host.GameScreen;
+        if (!screen.Fullscreen)
+        {
+            _screenLabel.Foreground = Ui.Br(Ui.Dim);
+            _screenLabel.Text = "Modo do jogo: janela. O overlay fica por cima do jogo quando o ligar.";
+            return;
+        }
+
+        var name = screen.ShortName.Length > 0 ? screen.ShortName : "O jogo";
+        if (Host.OverlayBehindGame)
+        {
+            _screenLabel.Foreground = Ui.Br(Ui.Gold);
+            _screenLabel.Text = $"{name} em tela cheia exclusiva: o Windows esconde qualquer sobreposicao. " +
+                                "Use \"tela cheia sem bordas\" ou janela - o FPS continua a ser medido.";
         }
         else
         {
-            _fpsStatus.Text = error;
+            _screenLabel.Foreground = Ui.Br(Ui.Green);
+            _screenLabel.Text = $"{name} em tela cheia: o overlay fica por cima do jogo.";
         }
     }
 
@@ -316,9 +388,11 @@ public sealed class GamesPage : PageBase
             Host.Info("Meca primeiro a base: sem ela nao há nada para comparar.", "Medir");
             return;
         }
-        if (_targets.SelectedItem is not string target || string.IsNullOrWhiteSpace(target))
+        var target = _targets.SelectedItem as string;
+        if (string.IsNullOrWhiteSpace(target)) target = Host.LastApp.Process;
+        if (string.IsNullOrWhiteSpace(target))
         {
-            Host.Info("Escolha o jogo na lista (use \"Listar jogos abertos\").", "Medir");
+            Host.Info("Abra o jogo, volte a esta janela e tente de novo.", "Medir");
             return;
         }
 
@@ -347,7 +421,7 @@ public sealed class GamesPage : PageBase
             _measureStatus.Text = $"A medir {target} durante {MeasureSeconds} s. Deixe o jogo a correr.";
             await System.Threading.Tasks.Task.Delay(TimeSpan.FromSeconds(MeasureSeconds));
             Host.Fps.Stop();
-            _fpsButton.Content = "Iniciar medicao";
+            _fpsButton.Content = "Medir o jogo em foco";
 
             var samples = Host.Fps.Samples;
             if (samples < 60)
