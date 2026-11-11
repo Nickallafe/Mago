@@ -1,6 +1,7 @@
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
+using System.Windows.Input;
 
 namespace MagoDaPerformance;
 
@@ -19,6 +20,7 @@ public sealed class GamesPage : PageBase
     private readonly TextBlock _measureStatus;
     private readonly TextBlock _screenLabel;
     private readonly TextBlock _hotkeyLabel;
+    private readonly TextBox _hotkeyBox;
 
     private bool _downloading;
     private bool _measuring;
@@ -80,8 +82,22 @@ public sealed class GamesPage : PageBase
         overlayBody.Children.Add(Ui.Lbl(
             "Contador de FPS por cima do jogo. Arraste-o para o canto que quiser: a posicao fica guardada.",
             11, Ui.Dim));
+        // Atalho configuravel: clicar na caixa e carregar na combinacao, sem escrever nada.
+        var hotkeyRow = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 8, 0, 0) };
+        var hotkeyCaption = Ui.Lbl("Atalho global:", 11, Ui.Dim);
+        hotkeyCaption.VerticalAlignment = VerticalAlignment.Center;
+        hotkeyRow.Children.Add(hotkeyCaption);
+        _hotkeyBox = Ui.Input("", 150);
+        _hotkeyBox.IsReadOnly = true;
+        _hotkeyBox.Width = 150;
+        _hotkeyBox.Margin = new Thickness(8, 0, 0, 0);
+        _hotkeyBox.Cursor = Cursors.Hand;
+        _hotkeyBox.PreviewKeyDown += OnHotkeyKey;
+        hotkeyRow.Children.Add(_hotkeyBox);
+        overlayBody.Children.Add(hotkeyRow);
+
         _hotkeyLabel = Ui.Lbl("", 9, Ui.Dim);
-        _hotkeyLabel.Margin = new Thickness(0, 6, 0, 0);
+        _hotkeyLabel.Margin = new Thickness(0, 4, 0, 0);
         overlayBody.Children.Add(_hotkeyLabel);
 
         // Legenda do modo de ecra, atualizada sozinha pelo vigia do primeiro plano.
@@ -337,10 +353,48 @@ public sealed class GamesPage : PageBase
     private void ToggleOverlay() => Host.ToggleOverlay(Host.Overlay == null);
 
     /// <summary>O atalho so' se anuncia quando ficou mesmo registado.</summary>
-    private void UpdateHotkeyLabel() =>
+    private void UpdateHotkeyLabel()
+    {
+        _hotkeyBox.Text = Host.OverlayHotkeyText;
         _hotkeyLabel.Text = Host.OverlayHotkeyActive
-            ? $"Atalho {MainWindow.OverlayHotkeyLabel}: liga e desliga o overlay em qualquer app."
-            : "Atalho indisponivel: outra app ja' usa Ctrl+Alt+F.";
+            ? "Clique na caixa e carregue na combinacao (Ctrl, Alt, Shift ou Win + uma tecla)."
+            : $"Atalho indisponivel: outra app ja' usa {Host.OverlayHotkeyText}.";
+    }
+
+    /// <summary>Le a combinacao do teclado: mais simples e mais seguro do que a escrever a mao.</summary>
+    private void OnHotkeyKey(object sender, KeyEventArgs e)
+    {
+        e.Handled = true;
+        var key = e.Key == Key.System ? e.SystemKey : e.Key;
+        if (key is Key.LeftCtrl or Key.RightCtrl or Key.LeftAlt or Key.RightAlt or Key.LeftShift
+            or Key.RightShift or Key.LWin or Key.RWin or Key.None) return;
+        if (key is Key.Tab or Key.Escape) return;
+
+        var parts = new List<string>();
+        if ((Keyboard.Modifiers & ModifierKeys.Control) != 0) parts.Add("Ctrl");
+        if ((Keyboard.Modifiers & ModifierKeys.Alt) != 0) parts.Add("Alt");
+        if ((Keyboard.Modifiers & ModifierKeys.Shift) != 0) parts.Add("Shift");
+        if ((Keyboard.Modifiers & ModifierKeys.Windows) != 0) parts.Add("Win");
+        parts.Add(KeyName(key));
+
+        if (Host.SetOverlayHotkey(string.Join("+", parts), out var error))
+        {
+            UpdateHotkeyLabel();
+            _hotkeyLabel.Text = $"Atalho {Host.OverlayHotkeyText} registado.";
+        }
+        else
+        {
+            _hotkeyLabel.Text = error;
+        }
+    }
+
+    private static string KeyName(Key key)
+    {
+        if (key is >= Key.D0 and <= Key.D9) return ((char)('0' + (key - Key.D0))).ToString();
+        if (key is >= Key.NumPad0 and <= Key.NumPad9) return ((char)('0' + (key - Key.NumPad0))).ToString();
+        if (key is >= Key.F1 and <= Key.F24) return "F" + (key - Key.F1 + 1);
+        return key.ToString();
+    }
 
     private void UpdateOverlayButton() =>
         _overlayButton.Content = Host.Overlay == null ? "Ligar overlay" : "Desligar overlay";

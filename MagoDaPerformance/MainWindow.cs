@@ -39,8 +39,8 @@ public partial class MainWindow : Window
     /// <summary>O overlay foi ligado/desligado (pelo botao ou pelo atalho global).</summary>
     public event Action? OverlayChanged;
 
-    /// <summary>Atalho global que liga/desliga o overlay sem trazer o Mago para a frente.</summary>
-    public const string OverlayHotkeyLabel = "Ctrl+Alt+F";
+    /// <summary>Atalho global atual (texto guardado nas preferencias).</summary>
+    public string OverlayHotkeyText => Settings.OverlayHotkey;
 
     /// <summary>Falso quando outra app ja' tem o atalho: a UI nao deve prometer o que nao funciona.</summary>
     public bool OverlayHotkeyActive { get; private set; }
@@ -179,16 +179,13 @@ public partial class MainWindow : Window
 
     private const int OverlayHotkeyId = 0x4A47;
     private const int WmHotkey = 0x0312;
-    private const uint ModAlt = 0x0001;
-    private const uint ModControl = 0x0002;
     private const uint ModNoRepeat = 0x4000;
-    private const uint VirtualKeyF = 0x46;
 
     private HwndSource? _hotkeySource;
 
     /// <summary>
-    /// Ctrl+Alt+F em qualquer app. O Windows entrega WM_HOTKEY ao handle que o registou e nao
-    /// ativa a janela, por isso o jogo nao perde o foco ao ligar/desligar o overlay.
+    /// Liga o atalho guardado. O Windows entrega WM_HOTKEY ao handle que o registou e nao ativa
+    /// a janela, por isso o jogo nao perde o foco ao ligar/desligar o overlay.
     /// </summary>
     private void RegisterOverlayHotkey()
     {
@@ -197,11 +194,58 @@ public partial class MainWindow : Window
 
         _hotkeySource = HwndSource.FromHwnd(handle);
         _hotkeySource?.AddHook(HotkeyHook);
-        OverlayHotkeyActive = RegisterHotKey(handle, OverlayHotkeyId, ModControl | ModAlt | ModNoRepeat, VirtualKeyF);
-        if (OverlayHotkeyActive) return;
 
-        Log.Write($"Atalho {OverlayHotkeyLabel} indisponivel: outra app ja' o usa.", "AVISO");
-        Status($"Atalho {OverlayHotkeyLabel} indisponivel (outra app ja' o usa).");
+        if (TryRegisterHotkey(Settings.OverlayHotkey, out var error)) return;
+
+        Log.Write(error, "AVISO");
+        Status(error);
+    }
+
+    /// <summary>
+    /// Troca o atalho global. Se o novo estiver ocupado, o anterior volta a funcionar: quem
+    /// experimenta uma combinacao nao pode ficar sem atalho nenhum.
+    /// </summary>
+    public bool SetOverlayHotkey(string text, out string error)
+    {
+        var previous = Settings.OverlayHotkey;
+        ReleaseHotkey();
+
+        if (TryRegisterHotkey(text, out error))
+        {
+            Settings.OverlayHotkey = Hotkey.TryParse(text, out var parsed) ? parsed.Describe() : text;
+            Settings.Save();
+            Status($"Atalho do overlay: {Settings.OverlayHotkey}");
+            return true;
+        }
+
+        if (!TryRegisterHotkey(previous, out var previousError)) Log.Write(previousError, "AVISO");
+        return false;
+    }
+
+    private bool TryRegisterHotkey(string text, out string error)
+    {
+        error = "";
+        if (!Hotkey.TryParse(text, out var hotkey))
+        {
+            error = $"\"{text}\" nao e' um atalho valido: use Ctrl, Alt, Shift ou Win com uma tecla.";
+            return false;
+        }
+
+        var handle = new WindowInteropHelper(this).Handle;
+        if (handle == IntPtr.Zero)
+        {
+            error = "A janela ainda nao esta' pronta.";
+            return false;
+        }
+
+        if (RegisterHotKey(handle, OverlayHotkeyId, hotkey.Modifiers | ModNoRepeat, hotkey.Key))
+        {
+            OverlayHotkeyActive = true;
+            return true;
+        }
+
+        error = $"{hotkey.Describe()} ja' esta' a ser usado por outra app.";
+        return false;
     }
 
     private IntPtr HotkeyHook(IntPtr handle, int message, IntPtr wParam, IntPtr lParam, ref bool handled)
@@ -212,13 +256,18 @@ public partial class MainWindow : Window
         return IntPtr.Zero;
     }
 
-    private void UnregisterOverlayHotkey()
+    private void ReleaseHotkey()
     {
         var handle = new WindowInteropHelper(this).Handle;
         if (handle != IntPtr.Zero && OverlayHotkeyActive) UnregisterHotKey(handle, OverlayHotkeyId);
+        OverlayHotkeyActive = false;
+    }
+
+    private void UnregisterOverlayHotkey()
+    {
+        ReleaseHotkey();
         _hotkeySource?.RemoveHook(HotkeyHook);
         _hotkeySource = null;
-        OverlayHotkeyActive = false;
     }
 
     [DllImport("user32.dll", SetLastError = true)]

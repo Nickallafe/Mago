@@ -22,6 +22,9 @@ public sealed class AppSettings
     [JsonPropertyName("overlay_opacity")] public double OverlayOpacity { get; set; } = DefaultOverlayOpacity;
     [JsonPropertyName("overlay_font_size")] public double OverlayFontSize { get; set; } = DefaultOverlayFontSize;
 
+    // Atalho global que liga/desliga o overlay, em texto ("Ctrl+Alt+F"). Ver Hotkey.TryParse.
+    [JsonPropertyName("overlay_hotkey")] public string OverlayHotkey { get; set; } = Hotkey.DefaultText;
+
     private static readonly JsonSerializerOptions Options = new() { WriteIndented = true };
 
     /// <summary>Repoe o overlay de FPS no padrao: sem posicao guardada, opacidade e tamanho de fabrica.</summary>
