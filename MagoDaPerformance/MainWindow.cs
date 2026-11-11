@@ -45,6 +45,9 @@ public partial class MainWindow : Window
     /// <summary>Falso quando outra app ja' tem o atalho: a UI nao deve prometer o que nao funciona.</summary>
     public bool OverlayHotkeyActive { get; private set; }
 
+    /// <summary>O atalho guardado estava ocupado e o Mago voltou ao de fabrica sozinho.</summary>
+    public bool HotkeyWasReset { get; private set; }
+
     public BackupStore Store { get; }
     public TweakEngine Engine { get; }
     public HardwareInfo? Hardware { get; private set; }
@@ -196,11 +199,30 @@ public partial class MainWindow : Window
         _hotkeySource = HwndSource.FromHwnd(handle);
         _hotkeySource?.AddHook(HotkeyHook);
 
-        if (!TryRegisterHotkey(Settings.OverlayHotkey, out var error))
+        if (TryRegisterHotkey(Settings.OverlayHotkey, out var error))
         {
-            Log.Write(error, "AVISO");
-            Status(error);
+            UpdateHotkeyWarning();
+            return;
         }
+
+        // Ficar sem atalho por causa de outra app e' pior do que voltar ao de fabrica: o
+        // utilizador quer usar o overlay, nao discutir combinacoes de teclas.
+        var saved = Settings.OverlayHotkey;
+        var fellBack = !saved.Equals(Hotkey.DefaultText, StringComparison.OrdinalIgnoreCase) &&
+                       TryRegisterHotkey(Hotkey.DefaultText, out _);
+        if (fellBack)
+        {
+            HotkeyWasReset = true;
+            Settings.OverlayHotkey = Hotkey.DefaultText;
+            Settings.Save();
+            Log.Write($"{error} Atalho reposto em {Hotkey.DefaultText}.", "AVISO");
+            Status($"Atalho {saved} ocupado: reposto em {Hotkey.DefaultText}.");
+            UpdateHotkeyWarning();
+            return;
+        }
+
+        Log.Write(error, "AVISO");
+        Status(error);
         UpdateHotkeyWarning();
     }
 
@@ -239,6 +261,7 @@ public partial class MainWindow : Window
         {
             Settings.OverlayHotkey = Hotkey.TryParse(text, out var parsed) ? parsed.Describe() : text;
             Settings.Save();
+            HotkeyWasReset = false;   // escolha do utilizador: o aviso de reposicao deixa de fazer sentido
             Status($"Atalho do overlay: {Settings.OverlayHotkey}");
             UpdateHotkeyWarning();
             return true;

@@ -356,9 +356,11 @@ public sealed class GamesPage : PageBase
     private void UpdateHotkeyLabel()
     {
         _hotkeyBox.Text = Host.OverlayHotkeyText;
-        _hotkeyLabel.Text = Host.OverlayHotkeyActive
-            ? "Clique na caixa e carregue na combinacao (Ctrl, Alt, Shift ou Win + uma tecla)."
-            : $"Atalho indisponivel: outra app ja' usa {Host.OverlayHotkeyText}. Escolha outra combinacao na caixa acima.";
+        _hotkeyLabel.Text = !Host.OverlayHotkeyActive
+            ? $"Atalho indisponivel: outra app ja' usa {Host.OverlayHotkeyText}. Escolha outra combinacao na caixa acima."
+            : Host.HotkeyWasReset
+                ? $"O atalho guardado estava ocupado; o Mago voltou ao de fabrica ({Host.OverlayHotkeyText})."
+                : "Clique na caixa e carregue na combinacao (Ctrl, Alt, Shift ou Win + uma tecla).";
     }
 
     /// <summary>Le a combinacao do teclado: mais simples e mais seguro do que a escrever a mao.</summary>
