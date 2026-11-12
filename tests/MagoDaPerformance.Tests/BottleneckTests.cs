@@ -17,6 +17,17 @@ public class BottleneckTests
         Assert.Equal(expected, Bottleneck.Classify(gpu, cpu).Kind);
 
     [Fact]
+    public void Usa_a_amostragem_da_medicao_em_vez_de_uma_leitura_so()
+    {
+        // Se Analise tentasse correr o PowerShell, o processo inexistente dava desconhecido.
+        var summary = new LoadSummary(GpuAverage: 94, CpuMax: 38, Samples: 14);
+        Assert.Equal(LimitKind.Gpu, Bottleneck.Analyse(summary, "processo-que-nao-existe.exe").Kind);
+
+        var idle = new LoadSummary(GpuAverage: 35, CpuMax: 44, Samples: 14);
+        Assert.Equal(LimitKind.Capped, Bottleneck.Analyse(idle, "processo-que-nao-existe.exe").Kind);
+    }
+
+    [Fact]
     public void Descricao_diz_o_que_fazer_em_cada_caso()
     {
         Assert.Contains("GPU", Bottleneck.Classify(92, 30).Describe(90));

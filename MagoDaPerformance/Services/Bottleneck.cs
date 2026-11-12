@@ -59,6 +59,13 @@ public readonly record struct Bottleneck(LimitKind Kind, int GpuPercent, int Cpu
         };
     }
 
+    /// <summary>
+    /// Usa a amostragem feita durante a medicao (media da GPU e pior nucleo da janela). Cai na
+    /// leitura unica so' quando a amostragem nao deu amostras suficientes.
+    /// </summary>
+    public static Bottleneck Analyse(LoadSummary summary, string processName) =>
+        summary.Samples >= 3 ? Classify(summary.GpuAverage, summary.CpuMax) : Detect(processName);
+
     /// <summary>Le os contadores do Windows uma vez. Corre num processo a parte (~1 s).</summary>
     public static Bottleneck Detect(string processName, int timeoutMs = 15000)
     {
@@ -78,8 +85,17 @@ public readonly record struct Bottleneck(LimitKind Kind, int GpuPercent, int Cpu
 
         var (ok, output) = Proc.Run("powershell", "-NoProfile -NonInteractive -Command \"" + script + "\"", timeoutMs);
         if (!ok || output.Contains("none", StringComparison.OrdinalIgnoreCase)) return None;
+        if (!TryParseSample(output, out var gpu, out var cpu)) return None;
 
-        return Classify(ReadValue(output, "GPU="), ReadValue(output, "CPU="));
+        return Classify(gpu, cpu);
+    }
+
+    /// <summary>Le uma linha "GPU=97 CPU=45" do processo de amostragem.</summary>
+    internal static bool TryParseSample(string line, out int gpu, out int cpu)
+    {
+        gpu = ReadValue(line, "GPU=");
+        cpu = ReadValue(line, "CPU=");
+        return gpu >= 0 || cpu >= 0;
     }
 
     private static int ReadValue(string text, string key)

@@ -152,7 +152,7 @@ public sealed class GamesPage : PageBase
         var measureCard = Card("MEDIR ANTES / DEPOIS", 970);
         var measureBody = BodyOf(measureCard);
         measureBody.Children.Add(Ui.Lbl(
-            $"Mede {MeasureSeconds} s do jogo aberto (FPS medio, 1% low e p95 do frametime). " +
+            $"Mede {MeasureSeconds} s do jogo aberto (FPS medio, 1% low, p95 do frametime e a carga de GPU/CPU ao longo da janela). " +
             "Mede a base, aplica as otimizacoes em Otimizar e mede de novo: e' a unica forma de " +
             "saber se o ganho foi real.", 11, Ui.Dim));
         _measureStatus = Ui.Lbl("Abra o jogo; a base e o depois medem a app que estava em foco.", 11, Ui.Dim);
@@ -309,9 +309,10 @@ public sealed class GamesPage : PageBase
         if (Host.Fps.Running)
         {
             Host.Fps.Stop();
+            Host.Load.Stop();
             _fpsButton.Content = "Medir o jogo em foco";
             _fpsStatus.Text = "Medicao parada.";
-            AppendBottleneck(_fpsStatus, _measuredTarget);
+            AppendBottleneck(_fpsStatus, Host.Load.Summary(), _measuredTarget);
             return;
         }
 
@@ -344,6 +345,8 @@ public sealed class GamesPage : PageBase
         _fpsStatus.Foreground = Ui.Br(Ui.Txt);
         _fpsStatus.Text = $"A medir {System.IO.Path.GetFileNameWithoutExtension(target)}.";
         _measuredTarget = target;
+        // A carga passa a ser amostrada agora: o pico pode acontecer a meio da medicao.
+        Host.Load.Start(target);
 
         // Medir sem ver o numero nao serve de nada: o overlay liga-se com a medicao.
         if (Host.Overlay == null)
@@ -489,8 +492,11 @@ public sealed class GamesPage : PageBase
 
             _fpsButton.Content = "A medir...";
             _measureStatus.Text = $"A medir {target} durante {MeasureSeconds} s. Deixe o jogo a correr.";
+            Host.Load.Start(target);
             await System.Threading.Tasks.Task.Delay(TimeSpan.FromSeconds(MeasureSeconds));
             Host.Fps.Stop();
+            Host.Load.Stop();
+            var load = Host.Load.Summary();
             _fpsButton.Content = "Medir o jogo em foco";
 
             var samples = Host.Fps.Samples;
@@ -518,7 +524,7 @@ public sealed class GamesPage : PageBase
 
             // O que limita o jogo explica o numero: 60 FPS presos na GPU sao um problema
             // diferente de 60 FPS presos no V-Sync. A leitura dos contadores demora ~1 s.
-            AppendBottleneck(_measureStatus, target);
+            AppendBottleneck(_measureStatus, load, target);
         }
         finally
         {
@@ -530,7 +536,7 @@ public sealed class GamesPage : PageBase
     /// Acrescenta ao texto a conclusao sobre o gargalo. Corre em segundo plano: o PowerShell
     /// demora ~1 s e a janela nao pode esperar por isso.
     /// </summary>
-    private async void AppendBottleneck(TextBlock label, string target)
+    private async void AppendBottleneck(TextBlock label, LoadSummary load, string target)
     {
         if (_analysing || string.IsNullOrWhiteSpace(target)) return;
         _analysing = true;
@@ -539,7 +545,7 @@ public sealed class GamesPage : PageBase
         label.Text = original + "\nA ver se o limite esta' na CPU ou na GPU...";
         try
         {
-            var bottleneck = await System.Threading.Tasks.Task.Run(() => Bottleneck.Detect(target));
+            var bottleneck = await System.Threading.Tasks.Task.Run(() => Bottleneck.Analyse(load, target));
             if (Host.Dispatcher.HasShutdownStarted) return;
             label.Text = original + "\n" + bottleneck.Describe(Host.Fps.AverageFps);
         }

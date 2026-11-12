@@ -52,6 +52,9 @@ public partial class MainWindow : Window
     public TweakEngine Engine { get; }
     public HardwareInfo? Hardware { get; private set; }
     public FpsMonitor Fps { get; } = new();
+
+    /// <summary>Amostragem de GPU/CPU durante a medicao de FPS (ver LoadSampler).</summary>
+    public LoadSampler Load { get; } = new();
     public FpsOverlay? Overlay { get; private set; }
     public AppSettings Settings { get; }
 
@@ -145,6 +148,7 @@ public partial class MainWindow : Window
             Log.Write("A fechar a janela principal.");
             _screenWatch?.Stop();
             UnregisterOverlayHotkey();
+            Load.Dispose();
             Fps.Dispose();
             try { Overlay?.Close(); } catch { }
         };
