@@ -24,6 +24,8 @@ public sealed class GamesPage : PageBase
 
     private bool _downloading;
     private bool _measuring;
+    private bool _analysing;
+    private string _measuredTarget = "";
 
     // Comparacao antes/depois: mesma duracao nas duas capturas.
     private const int MeasureSeconds = 20;
@@ -309,6 +311,7 @@ public sealed class GamesPage : PageBase
             Host.Fps.Stop();
             _fpsButton.Content = "Medir o jogo em foco";
             _fpsStatus.Text = "Medicao parada.";
+            AppendBottleneck(_fpsStatus, _measuredTarget);
             return;
         }
 
@@ -340,6 +343,7 @@ public sealed class GamesPage : PageBase
         _fpsButton.Content = "Parar medicao";
         _fpsStatus.Foreground = Ui.Br(Ui.Txt);
         _fpsStatus.Text = $"A medir {System.IO.Path.GetFileNameWithoutExtension(target)}.";
+        _measuredTarget = target;
 
         // Medir sem ver o numero nao serve de nada: o overlay liga-se com a medicao.
         if (Host.Overlay == null)
@@ -511,10 +515,42 @@ public sealed class GamesPage : PageBase
                 _measureStatus.Foreground = Ui.Br(Ui.Txt);
                 _measureStatus.Text = Compare(_baseline!.Value, current);
             }
+
+            // O que limita o jogo explica o numero: 60 FPS presos na GPU sao um problema
+            // diferente de 60 FPS presos no V-Sync. A leitura dos contadores demora ~1 s.
+            AppendBottleneck(_measureStatus, target);
         }
         finally
         {
             _measuring = false;
+        }
+    }
+
+    /// <summary>
+    /// Acrescenta ao texto a conclusao sobre o gargalo. Corre em segundo plano: o PowerShell
+    /// demora ~1 s e a janela nao pode esperar por isso.
+    /// </summary>
+    private async void AppendBottleneck(TextBlock label, string target)
+    {
+        if (_analysing || string.IsNullOrWhiteSpace(target)) return;
+        _analysing = true;
+
+        var original = label.Text;
+        label.Text = original + "\nA ver se o limite esta' na CPU ou na GPU...";
+        try
+        {
+            var bottleneck = await System.Threading.Tasks.Task.Run(() => Bottleneck.Detect(target));
+            if (Host.Dispatcher.HasShutdownStarted) return;
+            label.Text = original + "\n" + bottleneck.Describe(Host.Fps.AverageFps);
+        }
+        catch (Exception ex)
+        {
+            Log.Write("Gargalo: " + ex.Message, "AVISO");
+            label.Text = original;
+        }
+        finally
+        {
+            _analysing = false;
         }
     }
 
