@@ -25,6 +25,10 @@ public sealed class AppSettings
     // Atalho global que liga/desliga o overlay, em texto ("Ctrl+Alt+F"). Ver Hotkey.TryParse.
     [JsonPropertyName("overlay_hotkey")] public string OverlayHotkey { get; set; } = Hotkey.DefaultText;
 
+    // Valor anterior de "otimizacoes de ecra inteiro" por .exe, para o utilizador poder reverter
+    // o que o Mago mudou no jogo (null = nao havia entrada no registo).
+    [JsonPropertyName("fso_previous")] public Dictionary<string, string?> FsoPrevious { get; set; } = new();
+
     private static readonly JsonSerializerOptions Options = new() { WriteIndented = true };
 
     /// <summary>Repoe o overlay de FPS no padrao: sem posicao guardada, opacidade e tamanho de fabrica.</summary>

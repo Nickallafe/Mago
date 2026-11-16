@@ -21,6 +21,8 @@ public sealed class GamesPage : PageBase
     private readonly TextBlock _screenLabel;
     private readonly TextBlock _hotkeyLabel;
     private readonly TextBox _hotkeyBox;
+    private readonly Button _fullscreenButton;
+    private readonly TextBlock _compatLabel;
 
     private bool _downloading;
     private bool _measuring;
@@ -104,8 +106,16 @@ public sealed class GamesPage : PageBase
 
         // Legenda do modo de ecra, atualizada sozinha pelo vigia do primeiro plano.
         _screenLabel = Ui.Lbl("", 11, Ui.Dim);
-        _screenLabel.Margin = new Thickness(0, 6, 0, 10);
+        _screenLabel.Margin = new Thickness(0, 6, 0, 8);
         overlayBody.Children.Add(_screenLabel);
+
+        // Sem injecao de codigo no jogo, a unica alavanca e' o modo como o Windows apresenta o
+        // ecra inteiro. Fica num botao com estado, porque e' o que resolve o "nao aparece".
+        _fullscreenButton = Ui.Btn("Permitir overlay em tela cheia", ToggleFullscreenCompat);
+        overlayBody.Children.Add(Ui.Wrap(_fullscreenButton));
+        _compatLabel = Ui.Lbl("", 9, Ui.Dim);
+        _compatLabel.Margin = new Thickness(0, 4, 0, 10);
+        overlayBody.Children.Add(_compatLabel);
 
         var opacityLabel = Ui.Lbl("", 11, Ui.Dim);
         var opacity = OverlaySlider(
@@ -224,6 +234,7 @@ public sealed class GamesPage : PageBase
         UpdateOverlayButton();
         UpdateScreenLabel();
         UpdateHotkeyLabel();
+        UpdateFullscreenButton();
     }
 
     /// <summary>Descarrega e instala o PresentMon sem sair da app.</summary>
@@ -405,6 +416,55 @@ public sealed class GamesPage : PageBase
         return key.ToString();
     }
 
+    /// <summary>
+    /// Liga/desliga as otimizacoes de ecra inteiro do .exe do jogo. E' reversivel: guardamos o
+    /// valor anterior nas preferencias e o mesmo botao repoe-o.
+    /// </summary>
+    private void ToggleFullscreenCompat()
+    {
+        var exe = OverlayCompat.ExePath(Host.LastApp.Process);
+        if (exe == null)
+        {
+            _compatLabel.Foreground = Ui.Br(Ui.Gold);
+            _compatLabel.Text = "Abra o jogo primeiro: o Mago precisa do caminho do .exe.";
+            return;
+        }
+
+        if (Host.Settings.FsoPrevious.TryGetValue(exe, out var previous))
+        {
+            var restored = OverlayCompat.Restore(exe, previous);
+            Host.Settings.FsoPrevious.Remove(exe);
+            Host.Settings.Save();
+            _compatLabel.Foreground = Ui.Br(restored ? Ui.Txt : Ui.Gold);
+            _compatLabel.Text = restored
+                ? "Alteracao revertida. Feche e abra o jogo para voltar ao modo anterior."
+                : "Nao consegui reverter no registo; os valores do jogo nao foram tocados.";
+            UpdateFullscreenButton();
+            return;
+        }
+
+        if (!OverlayCompat.Enable(exe, out var old, out var error))
+        {
+            _compatLabel.Foreground = Ui.Br(Ui.Gold);
+            _compatLabel.Text = error;
+            return;
+        }
+
+        Host.Settings.FsoPrevious[exe] = old;
+        Host.Settings.Save();
+        _compatLabel.Foreground = Ui.Br(Ui.Green);
+        _compatLabel.Text = "Otimizacoes de ecra inteiro ligadas. Feche e abra o jogo; se o overlay ainda nao aparecer, " +
+                            "escolha \"tela cheia sem bordas\" nas opcoes de video.";
+        UpdateFullscreenButton();
+    }
+
+    private void UpdateFullscreenButton()
+    {
+        var exe = OverlayCompat.ExePath(Host.LastApp.Process);
+        var changed = exe != null && Host.Settings.FsoPrevious.ContainsKey(exe);
+        _fullscreenButton.Content = changed ? "Reverter alteracao no jogo" : "Permitir overlay em tela cheia";
+    }
+
     private void UpdateOverlayButton() =>
         _overlayButton.Content = Host.Overlay == null ? "Ligar overlay" : "Desligar overlay";
 
@@ -428,8 +488,11 @@ public sealed class GamesPage : PageBase
         }
         else
         {
-            _screenLabel.Foreground = Ui.Br(Ui.Green);
-            _screenLabel.Text = $"{name} em tela cheia: o overlay fica por cima do jogo.";
+            // Nao prometer o que nao se controla: em ecra inteiro exclusivo o overlay existe mas
+            // fica invisivel, e a janela do jogo pode nao deixar provar isso pela ordem Z.
+            _screenLabel.Foreground = Ui.Br(Ui.Txt);
+            _screenLabel.Text = $"{name} em tela cheia. Se o overlay nao aparecer, o jogo esta' em modo exclusivo: " +
+                                "use \"tela cheia sem bordas\" nas opcoes de video ou o botao abaixo.";
         }
     }
 

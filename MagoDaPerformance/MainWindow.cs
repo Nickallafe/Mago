@@ -179,6 +179,16 @@ public partial class MainWindow : Window
 
         GameScreen = screen;
         OverlayBehindGame = behind;
+
+        if (screen.Fullscreen)
+        {
+            // Uma linha por mudanca de modo: sem isto, "nao aparece" nao deixa rasto nenhum
+            // e nao ha como saber se o jogo estava em ecra inteiro exclusivo.
+            var exe = OverlayCompat.ExePath(screen.Process);
+            var compat = exe == null ? "?" : OverlayCompat.Read(exe).ToString();
+            Log.Write($"Ecra inteiro: {screen.Process} ({exe ?? "caminho desconhecido"}), otimizacoes={compat}, overlayAtras={behind}.");
+        }
+
         ScreenModeChanged?.Invoke();
     }
 
