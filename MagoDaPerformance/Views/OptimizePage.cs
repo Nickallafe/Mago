@@ -10,6 +10,7 @@ public sealed class OptimizePage : PageBase
     private readonly TextBlock _hint;
     private readonly ListBox _modulesList;
     private readonly TextBlock _modulesStatus;
+    private readonly TextBlock _verifyStatus;
 
     public OptimizePage(MainWindow host) : base(host, "Otimizar",
         "Escolha um perfil e aplique tudo, ou mexa so' nas otimizacoes que quiser. " +
@@ -42,16 +43,20 @@ public sealed class OptimizePage : PageBase
         modBody.Children.Add(Ui.Lbl(
             "Cada botao aplica apenas aquele ajuste, para poder testar um de cada vez.", 11, Ui.Dim));
         modBody.Children.Add(Ui.Wrap(
-            Ui.Btn("GPU (HAGS)", () => Host.RunTask(() => { Host.Engine.TweakGpu(); return null; }, "GPU...")),
-            Ui.Btn("Modo Jogo do Windows", () => Host.RunTask(() => { Host.Engine.TweakWindowsGaming(); return null; }, "Modo Jogo...")),
-            Ui.Btn("Multimedia", () => Host.RunTask(() => { Host.Engine.TweakReg(); return null; }, "Multimedia...")),
-            Ui.Btn("Energia", () => Host.RunTask(() => { Host.Engine.TweakPower(); return null; }, "Energia...")),
-            Ui.Btn("Servicos do Windows", () => Host.RunTask(() => { Host.Engine.TweakServices(); return null; }, "Servicos...")),
+            Ui.Btn("GPU (HAGS)", () => ApplyModule("GPU", "GPU", () => Host.Engine.TweakGpu())),
+            Ui.Btn("Modo Jogo do Windows", () => ApplyModule("Windows Gaming", "Modo Jogo", () => Host.Engine.TweakWindowsGaming())),
+            Ui.Btn("Multimedia", () => ApplyModule("Registo multimidia", "multimedia", () => Host.Engine.TweakReg())),
+            Ui.Btn("Energia", () => ApplyModule("Plano de energia", "energia", () => Host.Engine.TweakPower())),
+            Ui.Btn("Servicos do Windows", () => ApplyModule("Servicos", "servicos", () => Host.Engine.TweakServices())),
             Ui.Btn("Temporarios e DNS", () => Host.RunTask(() => Host.Engine.CleanTempAndDns(), "Limpeza...")),
-            Ui.Btn("TCP e ping", () => Host.RunTask(() => { Host.Engine.TweakNetwork(); return null; }, "TCP e ping...")),
-            Ui.Btn("Input lag", () => Host.RunTask(() => { Host.Engine.TweakInputLag(); return null; }, "Input lag...")),
-            Ui.Btn("SSD e indexacao", () => Host.RunTask(() => { Host.Engine.TweakSsd(); return null; }, "SSD...")),
+            Ui.Btn("TCP e ping", () => ApplyModule("Rede", "rede", () => Host.Engine.TweakNetwork())),
+            Ui.Btn("Input lag", () => ApplyModule("Input lag", "input lag", () => Host.Engine.TweakInputLag())),
+            Ui.Btn("SSD e indexacao", () => ApplyModule("SSD", "SSD", () => Host.Engine.TweakSsd())),
             Ui.Btn("Fechar apps de fundo", CloseBackgroundApps)));
+
+        // Resultado da releitura: fica no cartao mesmo depois de o dialogo ser fechado.
+        _verifyStatus = Ui.Lbl("", 11, Ui.Dim);
+        modBody.Children.Add(_verifyStatus);
 
         var all = Card("APLICAR TUDO", 380);
         var allBody = BodyOf(all);
@@ -146,6 +151,36 @@ public sealed class OptimizePage : PageBase
         Host.RunTask(() => Host.Engine.CloseBackground(), "A encerrar apps...");
     }
 
+    /// <summary>
+    /// Aplica um modulo e relê-o antes de dizer que esta' feito. A escrita sem erro so' prova
+    /// que o Windows aceitou o pedido; o valor pode voltar atras (VBS/HVCI) ou ser ignorado.
+    /// </summary>
+    private void ApplyModule(string module, string label, Action apply)
+    {
+        Host.RunTask(() =>
+        {
+            apply();
+            var report = Host.Engine.VerifyModule(module);
+            Host.Dispatcher.Invoke(() => ShowReport(report));
+            return report.Items.Count == 0 ? null : report.Describe();
+        }, "A aplicar " + label + "...");
+    }
+
+    private void ShowReport(VerificationReport report)
+    {
+        if (report.Items.Count == 0)
+        {
+            _verifyStatus.Foreground = Ui.Br(Ui.Dim);
+            _verifyStatus.Text = $"{report.Module}: nada para confirmar.";
+        }
+        else
+        {
+            _verifyStatus.Foreground = Ui.Br(report.Failed == 0 ? Ui.Green : Ui.Gold);
+            _verifyStatus.Text = report.Describe();
+        }
+        LoadModules();
+    }
+
     private void ApplyAll()
     {
         var message = Host.Engine.Competitive
@@ -160,7 +195,12 @@ public sealed class OptimizePage : PageBase
         Host.RunTask(() =>
         {
             var summary = Host.Engine.ApplyAll(label => Host.Dispatcher.Invoke(() => Host.Status("A aplicar: " + label)));
-            LoadModules();
+            Host.Dispatcher.Invoke(() =>
+            {
+                _verifyStatus.Text = summary;
+                _verifyStatus.Foreground = Ui.Br(summary.Contains('\u26A0') ? Ui.Gold : Ui.Green);
+                LoadModules();
+            });
             return summary;
         }, "A aplicar otimizacoes...");
     }

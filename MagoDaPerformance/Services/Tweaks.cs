@@ -1,4 +1,6 @@
 using System.Diagnostics;
+using System.Globalization;
+using Microsoft.Win32;
 
 namespace MagoDaPerformance;
 
@@ -98,6 +100,7 @@ public sealed class TweakEngine
         Track("reg::" + key + "::" + name);
         var ok = Reg.Write(key, name, type, data);
         Log.Write(ok ? $"[OK] Registo {name}={data}" : $"[FALHA] Registo {name}", ok ? "INFO" : "ERRO");
+        if (ok) ExpectReg(key, name, type, data);
         return ok;
     }
 
@@ -133,6 +136,7 @@ public sealed class TweakEngine
         Log.Write(okCfg ? $"[OK] Servico {name} desativado" : $"[FALHA] Servico {name}", okCfg ? "INFO" : "ERRO");
         if (!okCfg && outCfg.Length > 0) Log.Write(outCfg, "AVISO");
         if (outStop.Length > 0) Log.Write(outStop, "AVISO");
+        if (okCfg) ExpectServiceDisabled(name);
         return okCfg;
     }
 
@@ -192,6 +196,7 @@ public sealed class TweakEngine
         var expected = NormalizeBcdToken(value);
         if (!string.Equals(read, expected, StringComparison.OrdinalIgnoreCase))
             Log.Write($"bcdedit {name}: esperado {expected}, lido {read ?? "ausente"}", "AVISO");
+        ExpectBcd(name, value);
         return true;
     }
 
@@ -384,6 +389,7 @@ public sealed class TweakEngine
         var (ok, output) = Proc.Run("powercfg.exe", "-setactive " + target);
         Log.Write(ok ? "Plano de energia ativo (" + target + ")" : "Falha no plano de energia: " + output,
             ok ? "INFO" : "AVISO");
+        if (ok) ExpectPower(target);
         if (ok && templateName.Length > 0) CleanDuplicatePowerSchemes(target, templateName);
     }
 
@@ -650,6 +656,106 @@ public sealed class TweakEngine
     }
 
     /// <summary>Aplica todos os modulos e devolve um resumo do que passou e do que falhou.</summary>
+    // ---------- verificacao pos-aplicacao ----------
+
+    private sealed record Check(string Module, string Label, string Expected, Func<(bool Ok, string Actual)> Read);
+
+    private readonly List<Check> _checks = new();
+
+    private void ExpectReg(string key, string name, string type, string data)
+    {
+        var module = _module ?? "?";
+        _checks.Add(new Check(module, name, data, () => RegCheck(key, name, type, data)));
+    }
+
+    private void ExpectServiceDisabled(string name)
+    {
+        var module = _module ?? "?";
+        _checks.Add(new Check(module, "Servico " + name, "desativado", () => ServiceCheck(name)));
+    }
+
+    private void ExpectBcd(string name, string value)
+    {
+        var module = _module ?? "?";
+        var expected = NormalizeBcdToken(value) ?? value;
+        _checks.Add(new Check(module, "BCD " + name, expected, () =>
+        {
+            var read = ReadBcdValue(name) ?? "(ausente)";
+            return (string.Equals(read, expected, StringComparison.OrdinalIgnoreCase), read);
+        }));
+    }
+
+    private void ExpectPower(string guid)
+    {
+        var module = _module ?? "?";
+        _checks.Add(new Check(module, "Esquema de energia", "o esquema escolhido", () =>
+        {
+            var active = CurrentPowerGuid() ?? "(desconhecido)";
+            var ok = string.Equals(active, guid, StringComparison.OrdinalIgnoreCase);
+            return (ok, ok ? "ativo" : active);
+        }));
+    }
+
+    /// <summary>
+    /// Relê o que o modulo alterou e devolve o que esta' mesmo la'. Limpa as expectativas do
+    /// modulo: uma segunda chamada sem nova aplicacao nao deve repetir o relatorio antigo.
+    /// </summary>
+    public VerificationReport VerifyModule(string module)
+    {
+        List<Check> checks;
+        lock (_lock)
+        {
+            checks = _checks.Where(c => c.Module.Equals(module, StringComparison.OrdinalIgnoreCase)).ToList();
+            _checks.RemoveAll(c => c.Module.Equals(module, StringComparison.OrdinalIgnoreCase));
+        }
+
+        var items = new List<VerifiedItem>(checks.Count);
+        foreach (var check in checks)
+        {
+            var (ok, actual) = check.Read();
+            items.Add(new VerifiedItem(check.Label, check.Expected, actual, ok));
+            if (!ok) Log.Write($"Verificacao: {check.Label} esperado {check.Expected}, esta' {actual}", "AVISO");
+        }
+
+        if (items.Count > 0)
+            Log.Write($"Verificacao {module}: {items.Count(i => i.Ok)}/{items.Count} confirmadas.");
+
+        return new VerificationReport(module, items);
+    }
+
+    /// <summary>Um DWORD negativo no registo (4294967295 escrito como -1) tem de contar como igual.</summary>
+    internal static bool DwordMatches(string expected, string actual) =>
+        uint.TryParse(expected, NumberStyles.Integer, CultureInfo.InvariantCulture, out var want) &&
+        long.TryParse(actual, NumberStyles.Integer, CultureInfo.InvariantCulture, out var got) &&
+        unchecked((uint)got) == want;
+
+    private static (bool Ok, string Actual) RegCheck(string key, string name, string type, string data)
+    {
+        var actual = Reg.ReadString(key, name) ?? "(ausente)";
+        if (Reg.NameToKind(type) == RegistryValueKind.DWord) return (DwordMatches(data, actual), actual);
+        return (string.Equals(actual.Trim(), data.Trim(), StringComparison.OrdinalIgnoreCase), actual);
+    }
+
+    private static (bool Ok, string Actual) ServiceCheck(string name)
+    {
+        var (ok, output) = Proc.Run("sc.exe", "qc \"" + name + "\"", 15000);
+        if (!ok) return (false, "(nao consegui consultar)");
+
+        foreach (var line in output.Split('\n'))
+        {
+            if (!line.ToUpperInvariant().Contains("START_TYPE")) continue;
+            var digit = line.Where(char.IsDigit).FirstOrDefault();
+            return digit switch
+            {
+                '4' => (true, "desativado"),
+                '2' => (false, "automatico"),
+                '3' => (false, "manual"),
+                _ => (false, "desconhecido"),
+            };
+        }
+        return (false, "(sem START_TYPE)");
+    }
+
     public string ApplyAll(Action<string>? progress = null)
     {
         lock (_lock)
@@ -657,11 +763,17 @@ public sealed class TweakEngine
             CreateRestorePoint();
             var applied = new List<string>();
             var failed = new List<string>();
+            var checks = new List<VerifiedItem>();
             void Step(string label, Action action)
             {
                 progress?.Invoke(label);
                 Log.Write("A aplicar: " + label);
-                try { action(); applied.Add(label); }
+                try
+                {
+                    action();
+                    applied.Add(label);
+                    checks.AddRange(VerifyModule(label).Items);
+                }
                 catch (Exception ex)
                 {
                     failed.Add(label);
@@ -670,7 +782,7 @@ public sealed class TweakEngine
             }
             Step("GPU", TweakGpu);
             Step("Windows Gaming", TweakWindowsGaming);
-            Step("Registo multimedia", TweakReg);
+            Step("Registo multimidia", TweakReg);
             Step("Plano de energia", TweakPower);
             Step("Servicos", TweakServices);
             Step("Temp e DNS", () => CleanTempAndDns());
@@ -678,10 +790,20 @@ public sealed class TweakEngine
             Step("Input lag", TweakInputLag);
             Step("SSD", TweakSsd);
             Backup.Save();
-            Log.Write($"Pacote aplicado ({applied.Count} modulos, {failed.Count} com erro). Reinicia para kernel/GPU/BCD.");
+
+            var notApplied = checks.Where(c => !c.Ok).ToList();
+            Log.Write($"Pacote aplicado ({applied.Count} modulos, {failed.Count} com erro, " +
+                      $"{checks.Count - notApplied.Count}/{checks.Count} alteracoes confirmadas). Reinicia para kernel/GPU/BCD.");
+
+            var verified = notApplied.Count == 0
+                ? $"\u2713 {checks.Count} alteracao(oes) confirmadas."
+                : $"\u26A0 {notApplied.Count} nao pegaram: " + string.Join("; ", notApplied
+                    .Take(4)
+                    .Select(c => $"{c.Label} (esperado {c.Expected}, esta' {c.Actual})"));
+
             return failed.Count == 0
-                ? $"Pacote aplicado: {applied.Count} modulos. Reinicia para aplicar kernel/GPU/BCD."
-                : $"Aplicados: {applied.Count}. Com erro: {string.Join(", ", failed)}. Os restantes ficaram aplicados; detalhe no log.";
+                ? $"Pacote aplicado: {applied.Count} modulos. Reinicia para aplicar kernel/GPU/BCD.\n\n{verified}"
+                : $"Aplicados: {applied.Count}. Com erro: {string.Join(", ", failed)}.\n\n{verified}";
         }
     }
 
